@@ -12,5 +12,17 @@ This library uses Template Haskell and `language-c-quote`, a quasi-quotation lib
 Building
 --------
 
-This is currently just an experiment with a dumb build system. To compile it, you need the Haskell Platform 2012.4.0.0 (with GHC 7.4.2) and my fork of `language-c-quote` (for the Objective-C support).
+This is currently just an experiment with a dumb build system. To compile it, you need the Haskell Platform 2012.4.0.0 (with GHC 7.4.2) and my fork of `language-c-quote` (for the Objective-C support). Specifically,
 
+* Clone [`language-c-quote`][language-c-quote] and select the `inline-objc` branch.
+* In the cloned repository, run `cabal install`.
+* Clone this repository (``language-c-quote`).
+* In the cloned repository, run `make`.
+* Now run the demo executable with `./InlineObjC`.
+
+Contents
+--------
+The proof of concept has two main components:
+
+* `TestInlineObjC.hs`: This is an example of what a user writes to use the Inline C & Objective-C library.
+* `InlineObjC.hs`: This is a mock up of the Template Haskell that turns inline Objective-C code into a helper Objective-C file (here, it is `TestInlineObjC_objc.m`) and vanilla Haskell that invokes the Objective-C code via the regular Haskell C FFI.
