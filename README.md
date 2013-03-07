@@ -7,7 +7,7 @@ It is not really useful for anything at the moment.
 Inline C &amp; Objective-C in Haskell
 =====================================
 
-This library uses Template Haskell and `language-c-quote`, a quasi-quotation library for C-like languages, to provide inline C and Objective-C in Haskell. It extracts the C/Objective-C code automatically, when compiling the Haskell program, and generates marshalling code for common types.
+This library uses Template Haskell and `language-c-quote`, a quasi-quotation library for C-like languages, to provide inline C and Objective-C in Haskell. It extracts the C/Objective-C code automatically, when compiling the Haskell program, and generates marshalling code for common types. The wiki on GitHub details the [motivation](wiki/Motivation) for this approach.
 
 Building
 --------
