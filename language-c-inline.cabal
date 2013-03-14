@@ -1,0 +1,49 @@
+Name:                   language-c-inline
+Version:                0.1.0.0
+Cabal-version:          >= 1.6
+Tested-with:            GHC == 7.4.2
+Build-type:             Simple
+
+Synopsis:               Inline C & Objective-C code in Haskell for language interoperability
+Description:            This library provides inline C & Objective-C code using GHC's support for
+                        quasi-quotation. In particular, it enables the use of foreign libraries
+                        without a dedicated bridge or binding. Here is a tiny example:
+                        .
+                        > log :: String -> IO ()
+                        > log msg = $(objc 'msg [cexp| NSLog (@"Here is a message from Haskell: %@", msg) |])
+                        .
+                        For more information, see <https://github.com/mchakravarty/language-c-inline/wiki>.
+                        .
+                        Known bugs: <https://github.com/mchakravarty/language-c-inline/issues>
+                        .
+                        * New in 0.1.0.0: We are just getting started! This is just a ROUGH AND
+                        HIGHLY EXPERIMENTAL PROTOTYPE.
+License:                BSD3
+License-file:           LICENSE
+Author:                 Manuel M T Chakravarty
+Maintainer:             Manuel M T Chakravarty <chak@cse.unsw.edu.au>
+Homepage:               https://github.com/mchakravarty/language-c-inline/
+Bug-reports:            https://github.com/mchakravarty/language-c-inline/issues
+
+Category:               Language, Foreign
+Stability:              Experimental
+
+Extra-source-files:     README.md
+
+Library
+  Build-depends:        array,
+                        base              >= 4.0,
+                        filepath          >= 1.2,
+                        language-c-quote  >= 0.7,
+                        mainland-pretty   >= 0.2.5,
+                        template-haskell
+
+  Exposed-modules:      Language.C.Inline.ObjC
+
+--  Other-modules:        Language.C.Inline
+
+  Extensions:           TemplateHaskell, QuasiQuotes
+
+Source-repository head
+  Type:                 git
+  Location:             git://github.com/mchakravarty/language-c-inline.git

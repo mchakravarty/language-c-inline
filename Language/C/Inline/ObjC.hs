@@ -1,12 +1,10 @@
 {-# LANGUAGE TemplateHaskell, QuasiQuotes #-}
 
-module InlineObjC (objc_import, objc, objc_emit) where
+module Language.C.Inline.ObjC (objc_import, objc, objc_emit) where
 
 import Language.C.Quote           as ObjC
 import Language.C.Quote.ObjC      as ObjC
 import Text.PrettyPrint.Mainland  as ObjC
-
-import Data.Loc
 
 import Control.Applicative
 import Data.Array
