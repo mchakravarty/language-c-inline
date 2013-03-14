@@ -1,4 +1,2 @@
 *.o
 *.hi
-TestInlineObjC_objc.m
-InlineObjC
