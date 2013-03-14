@@ -2,3 +2,6 @@
 *.hi
 
 /dist/
+tests/objc/InlineObjC
+
+tests/objc/TestInlineObjC_objc.m

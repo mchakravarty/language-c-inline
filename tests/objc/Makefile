@@ -1,15 +1,15 @@
 HC      = ghc
 HCFLAGS = 
-LDFLAGS = -package template-haskell -package language-c-quote -framework Foundation
+LDFLAGS = -package template-haskell -package language-c-quote -package language-c-inline -framework Foundation
 
-OBJS = InlineObjC.o TestInlineObjC.o TestInlineObjC_objc.o MainInlineObjC.o
+OBJS = TestInlineObjC.o TestInlineObjC_objc.o MainInlineObjC.o
 
 default: InlineObjC
 
 %.o: %.hs
 	$(HC) -c $< $(HCFLAGS)
 
-TestInlineObjC.o: InlineObjC.o
+TestInlineObjC.o:
 MainInlineObjC.o: TestInlineObjC.o
 
 TestInlineObjC_objc.m: TestInlineObjC.o

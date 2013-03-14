@@ -3,7 +3,7 @@
 module TestInlineObjC (objc_initialise, dumpURL) where
 
 import Language.C.Quote.ObjC
-import InlineObjC
+import Language.C.Inline.ObjC
 
 objc_import ["<Foundation/Foundation.h>"]
 

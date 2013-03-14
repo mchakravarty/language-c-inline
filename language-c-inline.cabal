@@ -1,6 +1,6 @@
 Name:                   language-c-inline
 Version:                0.1.0.0
-Cabal-version:          >= 1.6
+Cabal-version:          >= 1.9.2
 Tested-with:            GHC == 7.4.2
 Build-type:             Simple
 
@@ -30,6 +30,10 @@ Stability:              Experimental
 
 Extra-source-files:     README.md
 
+Source-repository head
+  Type:                 git
+  Location:             git://github.com/mchakravarty/language-c-inline.git
+
 Library
   Build-depends:        array,
                         base              >= 4.0,
@@ -44,6 +48,9 @@ Library
 
   Extensions:           TemplateHaskell, QuasiQuotes
 
-Source-repository head
-  Type:                 git
-  Location:             git://github.com/mchakravarty/language-c-inline.git
+-- This doesn't work for some reason.
+Test-Suite objc
+  Type:                 exitcode-stdio-1.0
+  Hs-source-dirs:       tests/objc
+  Main-is:              tests/objc/MainInlineObjC.hs
+  Other-modules:        TestInlineObjC

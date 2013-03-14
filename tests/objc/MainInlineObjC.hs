@@ -4,5 +4,5 @@ main :: IO ()
 main
   = do
     { objc_initialise
-    ; dumpURL "http://www.cse.unsw.edu.au/~chak/"
+    ; dumpURL "https://raw.github.com/mchakravarty/language-c-inline/master/tests/objc/TestInlineObjC.hs"
     }

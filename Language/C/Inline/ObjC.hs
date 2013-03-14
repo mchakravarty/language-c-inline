@@ -1,11 +1,21 @@
 {-# LANGUAGE TemplateHaskell, QuasiQuotes #-}
 
-module Language.C.Inline.ObjC (objc_import, objc, objc_emit) where
+-- |
+-- Module      : Language.C.Inline.ObjC
+-- Copyright   : [2013] Manuel M T Chakravarty
+-- License     : BSD3
+--
+-- Maintainer  : Manuel M T Chakravarty <chak@cse.unsw.edu.au>
+-- Stability   : experimental
+-- Portability : non-portable (GHC extensions)
+--
+-- This module exports the principal API for inline Objective-C.
 
-import Language.C.Quote           as ObjC
-import Language.C.Quote.ObjC      as ObjC
-import Text.PrettyPrint.Mainland  as ObjC
+module Language.C.Inline.ObjC (
+  objc_import, objc, objc_emit
+) where
 
+-- common libraries
 import Control.Applicative
 import Data.Array
 import Data.Dynamic
@@ -16,6 +26,11 @@ import Language.Haskell.TH        as TH
 import Language.Haskell.TH.Syntax as TH
 import System.FilePath
 import System.IO.Unsafe                 (unsafePerformIO)
+
+-- quasi-quotation libraries
+import Language.C.Quote           as ObjC
+import Language.C.Quote.ObjC      as ObjC
+import Text.PrettyPrint.Mainland  as ObjC
 
 
 -- FIXME: Can we use a foreign export combined with a foreign import to tie the knot between using and
