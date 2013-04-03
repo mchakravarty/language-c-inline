@@ -14,7 +14,7 @@ Building
 
 To build the library, just use `cabal install` as usual. To build the proof of concept example, do the following
 
-* Execute `cd tests/objc; make`.
+* Execute `cd tests/objc/concept; make`.
 * Now run the demo executable with `./InlineObjC`.
 
 I tested it with Haskell Platform 2012.4.0.0 (which includes GHC 7.4.2) and it requires the latest version of `language-c-quote`, which is 0.7.1.
@@ -23,5 +23,5 @@ Contents
 --------
 The proof of concept has two main components:
 
-* `tests/objc/InlineObjC.hs`: This is an example of what a user writes to use the Inline C & Objective-C library.
+* `tests/objc/concept/InlineObjC.hs`: This is an example of what a user writes to use the Inline C & Objective-C library.
 * `Language/C/Inline/ObjC.hs`: This is a mock up of the Template Haskell that turns inline Objective-C code into a helper Objective-C file (here, it is `TestInlineObjC_objc.m`) and vanilla Haskell that invokes the Objective-C code via the regular Haskell C FFI. It works for this example, but is otherwise rather incomplete.
