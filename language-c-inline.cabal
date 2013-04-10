@@ -1,5 +1,5 @@
 Name:                   language-c-inline
-Version:                0.1.0.0
+Version:                0.2.0.0
 Cabal-version:          >= 1.9.2
 Tested-with:            GHC == 7.4.2
 Build-type:             Simple
@@ -15,6 +15,9 @@ Description:            This library provides inline C & Objective-C code using 
                         For more information, see <https://github.com/mchakravarty/language-c-inline/wiki>.
                         .
                         Known bugs: <https://github.com/mchakravarty/language-c-inline/issues>
+                        .
+                        * New in 0.2.0.0: Support for multiple free variables in one inline expression as well
+                        as for inline code returning 'void'.
                         .
                         * New in 0.1.0.0: We are just getting started! This is just a ROUGH AND
                         HIGHLY EXPERIMENTAL PROTOTYPE.
