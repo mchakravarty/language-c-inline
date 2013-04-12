@@ -82,38 +82,45 @@ objc vars resTy e
     
         -- Haskell type of the foreign wrapper function
     ; let hsWrapperTy = haskellWrapperType bridgeArgTys bridgeResTy
-    
+
+        -- FFI setup for the C wrapper    
     ; cwrapperName <- newName "cwrapper"
       -- FIXME: should we produce a .h as well??
     ; stashHS $ 
         forImpD CCall Safe (show cwrapperName) cwrapperName hsWrapperTy
     ; idx <- extendJumpTable cwrapperName
+
+        -- Generate the C wrapper code
     ; cArgVars <- mapM (newName . show) vars
-    ; let cConversions = [ [citem| $ty:cArgTy $id:(show var) = $exp:(cArgMarshaller cArgVar); |] 
+    ; let cMarshalling = [ [citem| $ty:cArgTy $id:(show var) = $exp:(cArgMarshaller cArgVar); |] 
                          | (cArgTy, var, cArgMarshaller, cArgVar) <- zip4 cArgTys vars cArgMarshallers cArgVars]
-          resultName = mkName "result"
+          resultName  = mkName "result"
+          cInvocation | resTy == ''() = [citem| $exp:e; |]                                  -- void result
+                      | otherwise     = [citem| {
+                                          $ty:cResTy $id:(show resultName) = $exp:e;        // non-void result...
+                                          return $exp:(cResMarshaller resultName);          // ...marshalled to Haskell
+                                        }|]
     ; stashObjC $ [cedecl|
                     $ty:cBridgeResTy $id:(show cwrapperName) ($params:(cParams cArgVars cBridgeArgTys))
                     {
-                      $items:cConversions
-                      $ty:cResTy $id:(show resultName) = $exp:e;
-                      return $exp:(cResMarshaller resultName);
+                      $items:cMarshalling
+                      $item:cInvocation
                     }
                   |]
                   -- FIXME: we need to specify somwhere that NSString needs to be available
 
         -- Generate invocation of the C wrapper sandwiched into Haskell-side marshalling
     ; invoke [hsArgMarshaller (varE var) | (var, hsArgMarshaller) <- zip vars hsArgMarshallers]
-             (callThroughTable idx)
+             (callThroughTable idx hsWrapperTy)
              [| \call -> do { cresult <- call; $(hsResMarshaller [|cresult|] [|return|]) } |]
     }
   where
-    callThroughTable idx
+    callThroughTable idx ty
       = do { jumptable <- readState foreignTable
            ; [|fromDyn 
                  ((unsafePerformIO $ readIORef $jumptable) ! $(TH.lift idx))
                  (error "InlineObjC: INTERNAL ERROR: type mismatch in jumptable")
-               :: CString -> IO CString|]
+               :: $ty |]
            }
 
       -- haskellWrapperType [a1, .., an] r = [| a1 -> .. -> an -> IO r |]
@@ -234,7 +241,7 @@ generateCToHaskellMarshaller hsTyName cTy
   | cTy == [cty| void |]
   = return ( [t| () |]
            , [cty| void |]
-           , \_ _ -> [| id |]
+           , \val cont -> [| $cont $val |]
            , \argName -> [cexp| $id:(show argName) |]
            )
   | otherwise
