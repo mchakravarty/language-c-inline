@@ -5,3 +5,7 @@
 tests/objc/InlineObjC
 
 tests/objc/TestInlineObjC_objc.m
+
+tests/objc/concept/TestInlineObjC_objc.m
+
+tests/objc/concept/InlineObjC

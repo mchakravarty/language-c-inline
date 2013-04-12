@@ -12,9 +12,9 @@ dumpURL :: String -> IO ()
 dumpURL urlString
   = do
     { urlData <- $(objc ['urlString] ''String [cexp| 
-                   [NSString stringWithContentsOfURL: [NSURL URLWithString: [NSString stringWithUTF8String: urlString]]
-                             encoding: NSUTF8StringEncoding 
-                             error: NULL] 
+                   [NSString stringWithContentsOfURL:[NSURL URLWithString:urlString]
+                             encoding:NSUTF8StringEncoding 
+                             error:NULL] 
                  |])
     ; putStr urlData
     }

@@ -21,6 +21,7 @@ import Control.Monad
 import Data.Array
 import Data.Dynamic
 import Data.IORef
+import Data.List
 import Foreign.C                  as C
 import Foreign.C.String           as C
 import Foreign.Marshal            as C
@@ -65,7 +66,7 @@ objc_import headers
 --
 objc :: [TH.Name] -> TH.Name -> QC.Exp -> Q TH.Exp
 objc vars resTy e
-  = do
+  = {- tryWithPlaceholder $ -} do  -- FIXME: catching the 'fail' purges all reported errors :(
     {   -- Sanity check of arguments
     ; varTys <- mapM determineVarType vars
     ; checkTypeName resTy
@@ -87,10 +88,14 @@ objc vars resTy e
     ; stashHS $ 
         forImpD CCall Safe (show cwrapperName) cwrapperName hsWrapperTy
     ; idx <- extendJumpTable cwrapperName
-    ; let resultName = mkName "result"
+    ; cArgVars <- mapM (newName . show) vars
+    ; let cConversions = [ [citem| $ty:cArgTy $id:(show var) = $exp:(cArgMarshaller cArgVar); |] 
+                         | (cArgTy, var, cArgMarshaller, cArgVar) <- zip4 cArgTys vars cArgMarshallers cArgVars]
+          resultName = mkName "result"
     ; stashObjC $ [cedecl|
-                    $ty:cBridgeResTy $id:(show cwrapperName) ($params:(cParams vars cBridgeArgTys))
+                    $ty:cBridgeResTy $id:(show cwrapperName) ($params:(cParams cArgVars cBridgeArgTys))
                     {
+                      $items:cConversions
                       $ty:cResTy $id:(show resultName) = $exp:e;
                       return $exp:(cResMarshaller resultName);
                     }
@@ -124,9 +129,6 @@ objc vars resTy e
       -- cParams [v1, .., vn] [a1, .., an] = [[cparam| a1 v1 |], .., [cparam| an vn |]]
     cParams [] []                     = []
     cParams (var:vars) (argTy:argTys) = [cparam| $ty:argTy $id:(showOccName var) |] : cParams vars argTys
-
-    unzip4 []                   = ([], [], [], [])
-    unzip4 ((a, b, c, d):abcds) = let (as, bs, cs, ds) = unzip4 abcds in (a:as, b:bs, c:cs, d:ds)
     
 -- FIXME: The following six functions need to go into a support module. The type mapping functions are language dependent
 --   (i.e., would be different for plain C and Objective-C).
@@ -171,10 +173,10 @@ haskellTypeToCType :: QC.Extensions -> TH.Type -> Q QC.Type
 haskellTypeToCType lang (ListT `AppT` (ConT char))
   | char == ''Char 
   = haskellTypeNameToCType lang ''String
-haskellTypeToCType lang (ConT tc `AppT` _)
+haskellTypeToCType lang (ConT tc)
   = haskellTypeNameToCType lang tc
 haskellTypeToCType lang ty
-  = reportErrorAndFail lang $ "don't know a foreign type suitable for Haskell type '" ++ show ty ++ "'"
+  = reportErrorAndFail lang $ "don't know a foreign type suitable for Haskell type '" ++ TH.pprint ty ++ "'"
 
 -- Determine the C type that we map a given Haskell type constructor to — i.e., we map all Haskell
 -- whose outermost constructor is the given type constructor to the returned C type..
@@ -186,14 +188,14 @@ haskellTypeNameToCType ObjC tyname
 haskellTypeNameToCType _lang tyname
   = reportErrorAndFail ObjC $ "don't know a foreign type suitable for Haskell type name '" ++ show tyname ++ "'"
 
--- Constructs Haskell code to marshall a value (used to marhsall arguments and results).
+-- Constructs Haskell code to marshal a value (used to marhsall arguments and results).
 --
 -- * The first argument is the code referring to the value to be marshalled.
 -- * The second argument is the continuation that gets the marshalled value as an argument.
 --
 type HaskellMarshaller = TH.ExpQ -> TH.ExpQ -> TH.ExpQ
 
--- Constructs C code to marhsall an argument (used to marshall arguments and results).
+-- Constructs C code to marhsall an argument (used to marshal arguments and results).
 --
 -- * The argument is the identifier of the value to be marshalled.
 -- * The result of the generated expression is the marshalled value.
@@ -202,18 +204,18 @@ type CMarshaller = TH.Name -> QC.Exp
   
 generateHaskellToCMarshaller :: TH.Type -> QC.Type -> Q (TH.TypeQ, QC.Type, HaskellMarshaller, CMarshaller)
 generateHaskellToCMarshaller hsTy cTy
-  | cTy == [cty| typename NSString |] 
+  | cTy == [cty| typename NSString * |] 
   = return ( [t| C.CString |]
            , [cty| char * |]
            , \val cont -> [| C.withCString $val $cont |]
            , \argName -> [cexp| [NSString stringWithUTF8String: $id:(show argName)] |]
            )
   | otherwise
-  = reportErrorAndFail ObjC $ "cannot marshall '" ++ show hsTy ++ "' to '" ++ show cTy ++ "'"
+  = reportErrorAndFail ObjC $ "cannot marshal '" ++ TH.pprint hsTy ++ "' to '" ++ prettyQC cTy ++ "'"
 
 generateCToHaskellMarshaller :: TH.Name -> QC.Type -> Q (TH.TypeQ, QC.Type, HaskellMarshaller, CMarshaller)
 generateCToHaskellMarshaller hsTyName cTy
-  | cTy == [cty| typename NSString |]
+  | cTy == [cty| typename NSString * |]
   = return ( [t| C.CString |]
            , [cty| char * |]
            , \val cont -> [| do { str <- C.peekCString $val; C.free $val; $cont str } |]
@@ -236,7 +238,7 @@ generateCToHaskellMarshaller hsTyName cTy
            , \argName -> [cexp| $id:(show argName) |]
            )
   | otherwise
-  = reportErrorAndFail ObjC $ "cannot marshall '" ++ show cTy ++ "' to '" ++ show hsTyName ++ "'"    
+  = reportErrorAndFail ObjC $ "cannot marshall '" ++ prettyQC cTy ++ "' to '" ++ pprint hsTyName ++ "'"    
 
 -- Emit the Objective-C file and return the foreign declarations. Needs to be spliced below the last
 -- use of 'objc'.
@@ -352,7 +354,7 @@ reportError lang msg
   = do
     { loc <- location
     -- FIXME: define a Show instance for 'Loc' and use it to prefix position to error
-    ; TH.report True $ "inline " ++ showLang lang ++ ": " ++ msg 
+    ; TH.report True $ "Inline " ++ showLang lang ++ ": " ++ msg 
     -- ; TH.reportError msg -- reqs template-haskell 2.8.0.0
     }
   where
@@ -362,5 +364,15 @@ reportError lang msg
     showLang QC.OpenCL        = "OpenCL"
     showLang QC.ObjC          = "Objective-C"
 
+-- If the tried computation fails, insert a placeholder expression.
+--
+-- We report all errors explicitly. Failing would just duplicate errors.
+--
+tryWithPlaceholder :: Q TH.Exp -> Q TH.Exp
+tryWithPlaceholder = ([| error "language-c-quote: internal error: tryWithPlaceholder" |] `recover`)
+
 showOccName :: Name -> String
 showOccName (Name occ _) = occString occ
+
+prettyQC :: QC.Pretty a => a -> String
+prettyQC = QC.pretty 80 . QC.ppr
