@@ -9,3 +9,9 @@ tests/objc/TestInlineObjC_objc.m
 tests/objc/concept/TestInlineObjC_objc.m
 
 tests/objc/concept/InlineObjC
+
+tests/objc/app/App_objc.m
+
+tests/objc/app/HSApp
+
+tests/objc/app/HSApp.app/Contents/MacOS/HSApp
