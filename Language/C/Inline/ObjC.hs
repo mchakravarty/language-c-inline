@@ -96,8 +96,8 @@ objc vars resTy e
     ; idx <- extendJumpTable cwrapperName
 
         -- Generate the C wrapper code
-    ; cArgVars <- mapM (newName . show) vars
-    ; let cMarshalling = [ [citem| $ty:cArgTy $id:(show var) = $exp:(cArgMarshaller cArgVar); |] 
+    ; cArgVars <- mapM (newName . nameBase) vars
+    ; let cMarshalling = [ [citem| $ty:cArgTy $id:(nameBase var) = $exp:(cArgMarshaller cArgVar); |] 
                          | (cArgTy, var, cArgMarshaller, cArgVar) <- zip4 cArgTys vars cArgMarshallers cArgVars]
           resultName  = mkName "result"
           cInvocation | resTy == ''() = [citem| $exp:e; |]                                  -- void result
@@ -140,12 +140,10 @@ objc vars resTy e
     
       -- cParams [v1, .., vn] [a1, .., an] = [[cparam| a1 v1 |], .., [cparam| an vn |]]
     cParams [] []                     = []
-    cParams (var:vars) (argTy:argTys) = [cparam| $ty:argTy $id:(showOccName var) |] : cParams vars argTys
+    cParams (var:vars) (argTy:argTys) = [cparam| $ty:argTy $id:(show var) |] : cParams vars argTys
     
 -- Emit the Objective-C file and return the foreign declarations. Needs to be spliced below the last
 -- use of 'objc'.
---
--- FIXME: TODO
 --
 objc_emit :: Q [TH.Dec]
 objc_emit
@@ -173,10 +171,3 @@ objc_emit
   where
     mkImport h@('<':_) = "#import " ++ h ++ ""
     mkImport h         = "#import \"" ++ h ++ "\""
-
-
--- Utils
--- -----
-
-showOccName :: Name -> String
-showOccName (Name occ _) = occString occ
