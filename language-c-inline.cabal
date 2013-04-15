@@ -47,7 +47,9 @@ Library
 
   Exposed-modules:      Language.C.Inline.ObjC
 
---  Other-modules:        Language.C.Inline
+  Other-modules:        Language.C.Inline.Error
+                        Language.C.Inline.State
+                        Language.C.Inline.ObjC.Marshal
 
   Extensions:           TemplateHaskell, QuasiQuotes
 

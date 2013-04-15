@@ -35,6 +35,11 @@ import Language.C.Quote           as QC
 import Language.C.Quote.ObjC      as QC
 import Text.PrettyPrint.Mainland  as QC
 
+  -- friends
+import Language.C.Inline.Error
+import Language.C.Inline.State
+import Language.C.Inline.ObjC.Marshal
+
 
 -- FIXME: Can we use a foreign export combined with a foreign import to tie the knot between using and
 --        filling the 'objc_jumptable'.
@@ -48,7 +53,7 @@ objc_import headers
   = do
     { mapM_ stashHeader headers
     ; objc_jumptable <- newName "objc_jumptable"
-    ; modifyState (\s -> s {foreignTable = varE objc_jumptable})
+    ; setForeignTable $ varE objc_jumptable
     ; sequence $ [ sigD objc_jumptable [t|IORef (Array Int Dynamic)|]
                  -- , pragInlD objc_jumptable NoInline FunLike AllPhases    -- reqs template-haskell 2.8.0.0
                  , pragInlD objc_jumptable (inlineSpecNoPhase False False)
@@ -116,7 +121,7 @@ objc vars resTy e
     }
   where
     callThroughTable idx ty
-      = do { jumptable <- readState foreignTable
+      = do { jumptable <- getForeignTable
            ; [|fromDyn 
                  ((unsafePerformIO $ readIORef $jumptable) ! $(TH.lift idx))
                  (error "InlineObjC: INTERNAL ERROR: type mismatch in jumptable")
@@ -137,116 +142,6 @@ objc vars resTy e
     cParams [] []                     = []
     cParams (var:vars) (argTy:argTys) = [cparam| $ty:argTy $id:(showOccName var) |] : cParams vars argTys
     
--- FIXME: The following six functions need to go into a support module. The type mapping functions are language dependent
---   (i.e., would be different for plain C and Objective-C).
-
--- Check that the given TH name is that of a Haskell variable and determine its type.
---
-determineVarType :: TH.Name -> Q TH.Type
-determineVarType vname
-  = do
-    { vinfo <- reify vname
-    ; case vinfo of
-        VarI _ ty _ _ -> return ty
-        nonVarInfo    -> 
-          do
-          { reportErrorAndFail QC.ObjC $ 
-              "expected '" ++ show vname ++ "' to be a variable name, but it is " ++ 
-              show (TH.ppr nonVarInfo)
-          }
-    }
-
--- Check that the given TH name is that of a Haskell type constructor.
---
-checkTypeName :: TH.Name -> Q ()
-checkTypeName tyname
-  = do
-    { tyinfo <- reify tyname
-    ; case tyinfo of
-        TyConI (DataD {})    -> return ()
-        TyConI (NewtypeD {}) -> return ()
-        TyConI (TySynD {})   -> return ()
-        nonTyInfo  -> 
-          do
-          { reportErrorAndFail QC.ObjC $ 
-              "expected '" ++ show tyname ++ "' to be a type name, but it is " ++ 
-              show (TH.ppr nonTyInfo)
-          }
-    }
-
--- Determine the C type that we map a given Haskell type to.
---
-haskellTypeToCType :: QC.Extensions -> TH.Type -> Q QC.Type
-haskellTypeToCType lang (ListT `AppT` (ConT char))
-  | char == ''Char 
-  = haskellTypeNameToCType lang ''String
-haskellTypeToCType lang (ConT tc)
-  = haskellTypeNameToCType lang tc
-haskellTypeToCType lang ty
-  = reportErrorAndFail lang $ "don't know a foreign type suitable for Haskell type '" ++ TH.pprint ty ++ "'"
-
--- Determine the C type that we map a given Haskell type constructor to — i.e., we map all Haskell
--- whose outermost constructor is the given type constructor to the returned C type..
---
-haskellTypeNameToCType :: QC.Extensions -> TH.Name -> Q QC.Type
-haskellTypeNameToCType ObjC tyname
-  | tyname == ''String = return [cty| typename NSString * |]
-  | tyname == ''()     = return [cty| void |]
-haskellTypeNameToCType _lang tyname
-  = reportErrorAndFail ObjC $ "don't know a foreign type suitable for Haskell type name '" ++ show tyname ++ "'"
-
--- Constructs Haskell code to marshal a value (used to marhsall arguments and results).
---
--- * The first argument is the code referring to the value to be marshalled.
--- * The second argument is the continuation that gets the marshalled value as an argument.
---
-type HaskellMarshaller = TH.ExpQ -> TH.ExpQ -> TH.ExpQ
-
--- Constructs C code to marhsall an argument (used to marshal arguments and results).
---
--- * The argument is the identifier of the value to be marshalled.
--- * The result of the generated expression is the marshalled value.
---
-type CMarshaller = TH.Name -> QC.Exp
-  
-generateHaskellToCMarshaller :: TH.Type -> QC.Type -> Q (TH.TypeQ, QC.Type, HaskellMarshaller, CMarshaller)
-generateHaskellToCMarshaller hsTy cTy
-  | cTy == [cty| typename NSString * |] 
-  = return ( [t| C.CString |]
-           , [cty| char * |]
-           , \val cont -> [| C.withCString $val $cont |]
-           , \argName -> [cexp| [NSString stringWithUTF8String: $id:(show argName)] |]
-           )
-  | otherwise
-  = reportErrorAndFail ObjC $ "cannot marshal '" ++ TH.pprint hsTy ++ "' to '" ++ prettyQC cTy ++ "'"
-
-generateCToHaskellMarshaller :: TH.Name -> QC.Type -> Q (TH.TypeQ, QC.Type, HaskellMarshaller, CMarshaller)
-generateCToHaskellMarshaller hsTyName cTy
-  | cTy == [cty| typename NSString * |]
-  = return ( [t| C.CString |]
-           , [cty| char * |]
-           , \val cont -> [| do { str <- C.peekCString $val; C.free $val; $cont str } |]
-           , \argName -> 
-               let arg = show argName 
-               in
-               [cexp|
-                 ({ typename NSUInteger maxLen = [$id:arg maximumLengthOfBytesUsingEncoding:NSUTF8StringEncoding] + 1;
-                   char *buffer = malloc (maxLen);
-                   if (![$id:arg getCString:buffer maxLength:maxLen encoding:NSUTF8StringEncoding])
-                     *buffer = '\0';
-                   buffer;
-                 })
-               |]
-           )
-  | cTy == [cty| void |]
-  = return ( [t| () |]
-           , [cty| void |]
-           , \val cont -> [| $cont $val |]
-           , \argName -> [cexp| $id:(show argName) |]
-           )
-  | otherwise
-  = reportErrorAndFail ObjC $ "cannot marshall '" ++ prettyQC cTy ++ "' to '" ++ pprint hsTyName ++ "'"    
-
 -- Emit the Objective-C file and return the foreign declarations. Needs to be spliced below the last
 -- use of 'objc'.
 --
@@ -264,15 +159,15 @@ objc_emit
         { writeFile  objcFname (unlines $ map mkImport headers)
         ; appendFile objcFname (show $ QC.ppr objc)
         }
-    ; objc_jumptable <- readState foreignTable
-    ; labels         <- readState foreignLabels
-    ; initialize     <-  [d|objc_initialise :: IO ()
-                            objc_initialise 
-                             = -- unsafePerformIO $ 
-                                 writeIORef $objc_jumptable $
-                                   listArray ($(lift (1::Int)), $(lift $ length labels)) $
-                                     $(listE [ [|toDyn $(varE label)|] | label <- labels])
-                         |]
+    ; objc_jumptable <- getForeignTable
+    ; labels         <- getForeignLabels
+    ; initialize     <- [d|objc_initialise :: IO ()
+                           objc_initialise 
+                            = -- unsafePerformIO $ 
+                                writeIORef $objc_jumptable $
+                                  listArray ($(lift (1::Int)), $(lift $ length labels)) $
+                                    $(listE [ [|toDyn $(varE label)|] | label <- labels])
+                        |]
     ; (initialize ++) <$> getHoistedHS 
     }
   where
@@ -280,106 +175,8 @@ objc_emit
     mkImport h         = "#import \"" ++ h ++ "\""
 
 
--- Internal
--- --------
-
-data State 
-  = State
-    { foreignTable  :: Q TH.Exp         -- table of foreign labels
-    , foreignLabels :: [Name]              -- list of foreign imported names to populate 'foreignTable'
-    , headers       :: [String]            -- imported Objective-C headers
-    , hoistedObjC   :: [QC.Definition]     -- Objective-C that goes into the .m
-    , hoistedHS     :: [TH.Dec]            -- Haskell that goes at the end of the module
-    }
-    -- FIXME: Using 'Dynamic' is good for debugging, but for production, 'unsafeCoerce' would be faster.
-
-state :: IORef State
-{-# NOINLINE state #-}
-state = unsafePerformIO $ 
-          newIORef $ 
-            State
-            { foreignTable  = error "InlineObjC: internal error: 'foreignTable' undefined"
-            , foreignLabels = []
-            , headers       = []
-            , hoistedObjC   = []
-            , hoistedHS     = []
-            }
-
-readState :: (State -> a) -> Q a
-readState read = runIO $ read <$> readIORef state
-
-modifyState :: (State -> State) -> Q ()
-modifyState modify = runIO $ modifyIORef state modify
-  -- atomic???
-
-stashHeader :: String -> Q ()
-stashHeader header = modifyState (\s -> s {headers = header : headers s})
-
-stashObjC :: QC.Definition -> Q ()
-stashObjC def = modifyState (\s -> s {hoistedObjC = def : hoistedObjC s})
-
-stashHS :: TH.DecQ -> Q ()
-stashHS decQ 
-  = do
-    { dec <- decQ
-    ; modifyState (\s -> s {hoistedHS = dec : hoistedHS s})
-    }
-
-extendJumpTable :: Name -> Q Int
-extendJumpTable foreignName
-  = do
-    { modifyState (\s -> s {foreignLabels = foreignLabels s ++ [foreignName]})   -- FIXME: *urgh*
-    ; length <$> readState foreignLabels
-    }
-
-getHeaders :: Q [String]
-getHeaders = reverse <$> readState headers
-
-getHoistedObjC :: Q [QC.Definition]
-getHoistedObjC = readState hoistedObjC
-
-getHoistedHS :: Q [TH.Dec]
-getHoistedHS = readState hoistedHS
-
-reportErrorAndFail :: QC.Extensions -> String -> Q a
-reportErrorAndFail lang msg
-  = do
-    { reportError lang msg
-    ; fail "Failure"
-    }
-
--- reportErrorAndBail :: String -> Q TH.Exp
--- reportErrorAndBail msg
---   = do
---     { reportError msg
---     ; Just undefinedName <- TH.lookupValueName "Prelude.undefined"
---     ; return $ VarE undefinedName
---     }
-
-reportError :: QC.Extensions -> String -> Q ()
-reportError lang msg
-  = do
-    { loc <- location
-    -- FIXME: define a Show instance for 'Loc' and use it to prefix position to error
-    ; TH.report True $ "Inline " ++ showLang lang ++ ": " ++ msg 
-    -- ; TH.reportError msg -- reqs template-haskell 2.8.0.0
-    }
-  where
-    showLang QC.Antiquotation = "C"
-    showLang QC.Gcc           = "GCC C"
-    showLang QC.CUDA          = "CUDA C"
-    showLang QC.OpenCL        = "OpenCL"
-    showLang QC.ObjC          = "Objective-C"
-
--- If the tried computation fails, insert a placeholder expression.
---
--- We report all errors explicitly. Failing would just duplicate errors.
---
-tryWithPlaceholder :: Q TH.Exp -> Q TH.Exp
-tryWithPlaceholder = ([| error "language-c-quote: internal error: tryWithPlaceholder" |] `recover`)
+-- Utils
+-- -----
 
 showOccName :: Name -> String
 showOccName (Name occ _) = occString occ
-
-prettyQC :: QC.Pretty a => a -> String
-prettyQC = QC.pretty 80 . QC.ppr
