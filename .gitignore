@@ -15,3 +15,11 @@ tests/objc/app/App_objc.m
 tests/objc/app/HSApp
 
 tests/objc/app/HSApp.app/Contents/MacOS/HSApp
+
+tests/objc/app/AppDelegate_objc.h
+
+tests/objc/app/AppDelegate_objc.m
+
+tests/objc/app/App_objc.h
+
+tests/objc/concept/TestInlineObjC_objc.h

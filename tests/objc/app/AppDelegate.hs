@@ -12,7 +12,7 @@ objc_interface [cunit|
 
 @interface AppDelegate : NSObject <NSApplicationDelegate>
 
-@property (assign) IBOutlet NSWindow *window;
+@property (assign) typename NSWindow *window;
 
 @end
 |]
@@ -22,7 +22,7 @@ objc_implementation [] [cunit|
 
 @implementation AppDelegate
 
-- (void)applicationDidFinishLaunching:(NSNotification *)aNotification
+- (void)applicationDidFinishLaunching:(typename NSNotification *)aNotification
 {
   NSLog(@"HSApp did finish launching!");
 }

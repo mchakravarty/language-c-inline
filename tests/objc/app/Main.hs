@@ -5,6 +5,6 @@ main :: IO ()
 main 
   = do
     { App.objc_initialise
-    ; Deletage.objc_initialise
+    ; Delegate.objc_initialise
     ; App.main
     }
