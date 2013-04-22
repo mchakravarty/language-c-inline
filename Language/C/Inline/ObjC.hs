@@ -12,7 +12,7 @@
 -- This module exports the principal API for inline Objective-C.
 
 module Language.C.Inline.ObjC (
-  objc_import, objc, objc_emit
+  objc_import, objc_interface, objc_implementation, objc, objc_emit
 ) where
 
   -- common libraries
@@ -41,12 +41,10 @@ import Language.C.Inline.State
 import Language.C.Inline.ObjC.Marshal
 
 
--- FIXME: Can we use a foreign export combined with a foreign import to tie the knot between using and
---        filling the 'objc_jumptable'.
-
--- Specify imported Objective-C files. Needs to be spliced where an import declaration can appear.
+-- |Specify imported Objective-C files. Needs to be spliced where an import declaration can appear. (Just put it
+-- straight after all the import statements in the module.)
 --
--- FIXME: TODO; need to use TH.addDependentFile on each of the imported ObjC files
+-- FIXME: need to use TH.addDependentFile on each of the imported ObjC files & read headers
 --
 objc_import :: [FilePath] -> Q [TH.Dec]
 objc_import headers
@@ -66,8 +64,39 @@ objc_import headers
     }
     -- FIXME: Should this also add the Language.C.Quote imports? (We might not need to generate any imports at all?!?)
 
+-- |Inline Objective-C top-level definitions for a header file ('.h').
+--
+objc_interface :: [QC.Definition] -> Q [TH.Dec]
+objc_interface defs
+  = do
+    { stashObjC_h =<< objcUnit [] defs
+    ; return []
+    }
 
--- Inline Objective-C.
+-- |Inline Objective-C top-level definitions for an implementation file ('.m').
+--
+-- The top-level Haskell variables given in the first argument will be foreign exported to be accessed from the
+-- generated Objective-C code.
+--
+objc_implementation :: [TH.Name] -> [QC.Definition] -> Q [TH.Dec]
+objc_implementation vars defs
+  = do
+    { stashObjC_m =<< objcUnit vars defs
+    ; return []
+    }
+
+-- Resolve free variables in a set of Objective-C top-level definitions.
+--
+objcUnit :: [TH.Name] -> [QC.Definition] -> Q [QC.Definition]
+objcUnit vars defs
+-- FIXME: vars!!!
+  = return defs
+
+-- |Inline Objective-C expression.
+--
+-- The inline expression will be wrapped in a C function whose arguments are marshalled versions of the Haskell
+-- variables given in the first argument and whose return value will be marhsalled to the Haskell type given by the
+-- second argument.
 --
 objc :: [TH.Name] -> TH.Name -> QC.Exp -> Q TH.Exp
 objc vars resTy e
@@ -90,12 +119,11 @@ objc vars resTy e
 
         -- FFI setup for the C wrapper    
     ; cwrapperName <- newName "cwrapper"
-      -- FIXME: should we produce a .h as well??
     ; stashHS $ 
         forImpD CCall Safe (show cwrapperName) cwrapperName hsWrapperTy
     ; idx <- extendJumpTable cwrapperName
 
-        -- Generate the C wrapper code
+        -- Generate the C wrapper code (both prototype and definition)
     ; cArgVars <- mapM (newName . nameBase) vars
     ; let cMarshalling = [ [citem| $ty:cArgTy $id:(nameBase var) = $exp:(cArgMarshaller cArgVar); |] 
                          | (cArgTy, var, cArgMarshaller, cArgVar) <- zip4 cArgTys vars cArgMarshallers cArgVars]
@@ -105,13 +133,16 @@ objc vars resTy e
                                           $ty:cResTy $id:(show resultName) = $exp:e;        // non-void result...
                                           return $exp:(cResMarshaller resultName);          // ...marshalled to Haskell
                                         }|]
-    ; stashObjC $ [cedecl|
-                    $ty:cBridgeResTy $id:(show cwrapperName) ($params:(cParams cArgVars cBridgeArgTys))
-                    {
-                      $items:cMarshalling
-                      $item:cInvocation
-                    }
-                  |]
+    ; stashObjC_h $ [cunit|
+                      $ty:cBridgeResTy $id:(show cwrapperName) ($params:(cParams cArgVars cBridgeArgTys));
+                    |]
+    ; stashObjC_m $ [cunit|
+                      $ty:cBridgeResTy $id:(show cwrapperName) ($params:(cParams cArgVars cBridgeArgTys))
+                      {
+                        $items:cMarshalling
+                        $item:cInvocation
+                      }
+                    |]
                   -- FIXME: we need to specify somwhere that NSString needs to be available
 
         -- Generate invocation of the C wrapper sandwiched into Haskell-side marshalling
@@ -142,20 +173,27 @@ objc vars resTy e
     cParams [] []                     = []
     cParams (var:vars) (argTy:argTys) = [cparam| $ty:argTy $id:(show var) |] : cParams vars argTys
     
--- Emit the Objective-C file and return the foreign declarations. Needs to be spliced below the last
--- use of 'objc'.
+-- |Emit the Objective-C file and return the foreign declarations. Needs to be the last use of an 'objc...' function.
+-- (Just put it at the end of the Haskell module.)
 --
 objc_emit :: Q [TH.Dec]
 objc_emit
   = do
     { loc <- location
-    ; let objcFname = dropExtension (loc_filename loc) ++ "_objc" `addExtension` "m"
-    ; headers <- getHeaders
-    ; objc    <- getHoistedObjC
+    ; let origFname   = loc_filename loc
+          objcFname   = dropExtension origFname ++ "_objc" 
+          objcFname_h = objcFname `addExtension` "h"
+          objcFname_m = objcFname `addExtension` "m"
+    ; headers          <- getHeaders
+    ; (objc_h, objc_m) <- getHoistedObjC
     ; runIO $
         do
-        { writeFile  objcFname (unlines $ map mkImport headers)
-        ; appendFile objcFname (show $ QC.ppr objc)
+        { writeFile  objcFname_h (info origFname)
+        ; appendFile objcFname_h (unlines (map mkImport headers) ++ "\n")
+        ; appendFile objcFname_h (show $ QC.ppr objc_h)
+        ; writeFile  objcFname_m (info origFname)
+        ; appendFile objcFname_m ("#import \"" ++ objcFname_h ++ "\"\n\n")
+        ; appendFile objcFname_m (show $ QC.ppr objc_m)
         }
     ; objc_jumptable <- getForeignTable
     ; labels         <- getForeignLabels
@@ -171,3 +209,7 @@ objc_emit
   where
     mkImport h@('<':_) = "#import " ++ h ++ ""
     mkImport h         = "#import \"" ++ h ++ "\""
+
+    info fname = "// Generated code: DO NOT EDIT\n\
+                 \//   generated from '" ++ fname ++ "'\n\
+                 \//   by package 'language-c-inline'\n\n"
