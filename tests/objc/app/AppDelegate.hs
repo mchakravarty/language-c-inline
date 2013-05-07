@@ -18,7 +18,9 @@ objc_interface [cunit|
 
 @interface AppDelegate : NSObject <NSApplicationDelegate>
 
-@property (assign) typename NSWindow *window;
+// IBOutlets
+@property (assign) typename NSWindow     *window;
+@property (assign) typename NSScrollView *scrollView;
 
 @end
 |]
@@ -26,10 +28,18 @@ objc_interface [cunit|
 
 objc_implementation ['launchMsg] [cunit|
 
+@interface AppDelegate ()
+
+@property typename NSTextView *textView;
+
+@end
+
 @implementation AppDelegate
 
 - (void)applicationDidFinishLaunching:(typename NSNotification *)aNotification
 {
+  self.textView = self.scrollView.documentView;
+  [self.textView insertText:launchMsg() ];
   NSLog(@"%@", launchMsg());
 }
 
