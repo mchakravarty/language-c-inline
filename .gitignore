@@ -23,3 +23,5 @@ tests/objc/app/AppDelegate_objc.m
 tests/objc/app/App_objc.h
 
 tests/objc/concept/TestInlineObjC_objc.h
+
+tests/objc/app/AppDelegate_stub.h

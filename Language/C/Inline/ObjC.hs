@@ -69,33 +69,92 @@ objc_import headers
 objc_interface :: [QC.Definition] -> Q [TH.Dec]
 objc_interface defs
   = do
-    { stashObjC_h =<< objcUnit [] defs
+    { stashObjC_h defs
     ; return []
     }
 
 -- |Inline Objective-C top-level definitions for an implementation file ('.m').
 --
 -- The top-level Haskell variables given in the first argument will be foreign exported to be accessed from the
--- generated Objective-C code.
+-- generated Objective-C code. In C, these Haskell variables will always be represented as functions. (In particular, if
+-- the Haskell variable refers to a CAF, it will be a nullary function in C — after all, a thunk may still need to be
+-- evaluated.)
 --
 objc_implementation :: [TH.Name] -> [QC.Definition] -> Q [TH.Dec]
 objc_implementation vars defs
   = do
-    { stashObjC_m =<< objcUnit vars defs
+    { mapM_ exportVar vars
+    ; stashObjC_m defs
     ; return []
     }
+  where
+    exportVar var
+      = do
+        {   -- Determine the argument and result types of the exported Haskell function
+        ; (argTys, inIO, resTy) <- splitHaskellType <$> determineVarType var
 
--- Resolve free variables in a set of Objective-C top-level definitions.
---
-objcUnit :: [TH.Name] -> [QC.Definition] -> Q [QC.Definition]
-objcUnit vars defs
--- FIXME: vars!!!
-  = return defs
+            -- Determine C types
+        ; cArgTys <- mapM (haskellTypeToCType ObjC) argTys
+        ; cResTy  <- haskellTypeToCType ObjC resTy
+
+            -- Determine the bridging type and the marshalling code    
+        ; (bridgeArgTys, cBridgeArgTys, hsArgMarshallers, cArgMarshallers) <- 
+            unzip4 <$> zipWithM generateCToHaskellMarshaller argTys cArgTys
+        ; (bridgeResTy,  cBridgeResTy,  hsResMarshaller,  cResMarshaller)  <- generateHaskellToCMarshaller resTy cResTy
+
+            -- Haskell type of the foreign wrapper function
+        ; let hsWrapperTy = haskellWrapperType bridgeArgTys bridgeResTy
+
+            -- Generate the Haskell wrapper
+        ; let cwrapperName = mkName . nameBase $ var
+        ; hswrapperName <- newName (nameBase var ++ "_hswrapper")
+        ; hsArgVars     <- mapM (const $ newName "arg") bridgeArgTys
+        ; stashHS
+            [ forExpD CCall (show hswrapperName) hswrapperName hsWrapperTy
+            , sigD hswrapperName hsWrapperTy
+            , funD hswrapperName
+                [ clause (map varP hsArgVars) 
+                         (normalB $ generateHSCall hsArgVars hsArgMarshallers (varE var) hsResMarshaller inIO)
+                         []
+                ]
+            ]
+
+            -- Generate the C wrapper code (both prototype and definition)
+        ; cArgVars <- mapM (const $ newName "arg") cBridgeArgTys
+        ; let call = [cexp| $id:(show hswrapperName) ( $args:(map show cArgVars) ) |]
+              (_wrapperProto, wrapperDef) 
+                = generateCWrapper cwrapperName cBridgeArgTys vars cArgMarshallers cArgTys cArgVars 
+                                   call
+                                   resTy cBridgeResTy cResMarshaller cResTy
+        ; stashObjC_m $
+              -- C prototype of the foreign exported Haskell-side wrapper
+            [cunit|
+              $ty:cBridgeResTy $id:(show hswrapperName) ($params:(cParams cBridgeArgTys cArgVars));
+            |]
+            ++
+            wrapperDef
+        }
+
+    splitHaskellType (ArrowT `AppT` arg `AppT` res) 
+      = let (args, inIO, res') = splitHaskellType res
+        in
+        (arg:args, inIO, res')
+    splitHaskellType (ConT io `AppT` res) | io == ''IO
+      = ([], True, res)
+    splitHaskellType res 
+      = ([], False, res)
+
+forExpD :: Callconv -> String -> Name -> TypeQ -> DecQ
+forExpD cc str n ty
+ = do 
+   { ty' <- ty
+   ; return $ ForeignD (ExportF cc str n ty')
+   }
 
 -- |Inline Objective-C expression.
 --
 -- The inline expression will be wrapped in a C function whose arguments are marshalled versions of the Haskell
--- variables given in the first argument and whose return value will be marhsalled to the Haskell type given by the
+-- variables given in the first argument and whose return value will be marshalled to the Haskell type given by the
 -- second argument.
 --
 objc :: [TH.Name] -> TH.Name -> QC.Exp -> Q TH.Exp
@@ -112,43 +171,30 @@ objc vars resTy e
         -- Determine the bridging type and the marshalling code    
     ; (bridgeArgTys, cBridgeArgTys, hsArgMarshallers, cArgMarshallers) <- 
         unzip4 <$> zipWithM generateHaskellToCMarshaller varTys cArgTys
-    ; (bridgeResTy,  cBridgeResTy,  hsResMarshaller,  cResMarshaller)  <- generateCToHaskellMarshaller resTy cResTy
+    ; (bridgeResTy,  cBridgeResTy,  hsResMarshaller,  cResMarshaller)  <- 
+        generateCToHaskellMarshaller (ConT resTy) cResTy
     
         -- Haskell type of the foreign wrapper function
     ; let hsWrapperTy = haskellWrapperType bridgeArgTys bridgeResTy
 
         -- FFI setup for the C wrapper    
     ; cwrapperName <- newName "cwrapper"
-    ; stashHS $ 
-        forImpD CCall Safe (show cwrapperName) cwrapperName hsWrapperTy
+    ; stashHS
+        [ forImpD CCall Safe (show cwrapperName) cwrapperName hsWrapperTy
+        ]
     ; idx <- extendJumpTable cwrapperName
 
         -- Generate the C wrapper code (both prototype and definition)
     ; cArgVars <- mapM (newName . nameBase) vars
-    ; let cMarshalling = [ [citem| $ty:cArgTy $id:(nameBase var) = $exp:(cArgMarshaller cArgVar); |] 
-                         | (cArgTy, var, cArgMarshaller, cArgVar) <- zip4 cArgTys vars cArgMarshallers cArgVars]
-          resultName  = mkName "result"
-          cInvocation | resTy == ''() = [citem| $exp:e; |]                                  -- void result
-                      | otherwise     = [citem| {
-                                          $ty:cResTy $id:(show resultName) = $exp:e;        // non-void result...
-                                          return $exp:(cResMarshaller resultName);          // ...marshalled to Haskell
-                                        }|]
-    ; stashObjC_h $ [cunit|
-                      $ty:cBridgeResTy $id:(show cwrapperName) ($params:(cParams cArgVars cBridgeArgTys));
-                    |]
-    ; stashObjC_m $ [cunit|
-                      $ty:cBridgeResTy $id:(show cwrapperName) ($params:(cParams cArgVars cBridgeArgTys))
-                      {
-                        $items:cMarshalling
-                        $item:cInvocation
-                      }
-                    |]
-                  -- FIXME: we need to specify somwhere that NSString needs to be available
+    ; let (wrapperProto, wrapperDef) 
+            = generateCWrapper cwrapperName cArgTys vars cArgMarshallers cBridgeArgTys cArgVars 
+                               e 
+                               (ConT resTy) cResTy cResMarshaller cBridgeResTy
+    ; stashObjC_h wrapperProto
+    ; stashObjC_m wrapperDef
 
         -- Generate invocation of the C wrapper sandwiched into Haskell-side marshalling
-    ; invoke [hsArgMarshaller (varE var) | (var, hsArgMarshaller) <- zip vars hsArgMarshallers]
-             (callThroughTable idx hsWrapperTy)
-             [| \call -> do { cresult <- call; $(hsResMarshaller [|cresult|] [|return|]) } |]
+    ; generateHSCall vars hsArgMarshallers (callThroughTable idx hsWrapperTy) hsResMarshaller True
     }
   where
     callThroughTable idx ty
@@ -159,20 +205,78 @@ objc vars resTy e
                :: $ty |]
            }
 
-      -- haskellWrapperType [a1, .., an] r = [| a1 -> .. -> an -> IO r |]
-    haskellWrapperType :: [TH.TypeQ] -> TH.TypeQ -> TH.TypeQ
-    haskellWrapperType []             resTy = [t| IO $resTy |]
-    haskellWrapperType (argTy:argTys) resTy = [t| $argTy -> $(haskellWrapperType argTys resTy) |]
+-- Turn a list of argument types and a result type into a Haskell wrapper signature.
+--
+-- > haskellWrapperType [a1, .., an] r = [| a1 -> .. -> an -> IO r |]
+--
+haskellWrapperType :: [TH.TypeQ] -> TH.TypeQ -> TH.TypeQ
+haskellWrapperType []             resTy = [t| IO $resTy |]
+haskellWrapperType (argTy:argTys) resTy = [t| $argTy -> $(haskellWrapperType argTys resTy) |]
+    
+-- Generate the prototype of and function definition of a C marshalling wrapper.
+--
+-- Given a C expression to be executed, this generator produces a C function that executes the expression with all
+-- arguments and the result marshalled using the provided marshallers.
+--
+generateCWrapper :: TH.Name 
+                 -> [QC.Type]
+                 -> [TH.Name]
+                 -> [CMarshaller]
+                 -> [QC.Type]
+                 -> [TH.Name]
+                 -> QC.Exp
+                 -> TH.Type
+                 -> QC.Type
+                 -> CMarshaller
+                 -> QC.Type
+                 -> ([QC.Definition], [QC.Definition])
+generateCWrapper cwrapperName argTys vars argMarshallers cWrapperArgTys argVars e hsResTy resTy resMarshaller cWrapperResTy
+  = let cMarshalling = [ [citem| $ty:argTy $id:(nameBase var) = $exp:(argMarshaller argVar); |] 
+                       | (argTy, var, argMarshaller, argVar) <- zip4 argTys vars argMarshallers argVars]
+        resultName  = mkName "result"
+        cInvocation | hsResTy == (ConT ''()) = [citem| $exp:e; |]                            -- void result
+                    | otherwise              = [citem| {
+                                                 $ty:resTy $id:(show resultName) = $exp:e;   // non-void result...
+                                                 return $exp:(resMarshaller resultName);     // ...marshalled to Haskell
+                                               }|]
+    in
+    ([cunit|
+       $ty:cWrapperResTy $id:(show cwrapperName) ($params:(cParams cWrapperArgTys argVars));
+     |],
+     [cunit|
+       $ty:cWrapperResTy $id:(show cwrapperName) ($params:(cParams cWrapperArgTys argVars))
+       {
+         $items:cMarshalling
+         $item:cInvocation
+       }
+     |])
 
+-- cParams [a1, .., an] [v1, .., vn] = [[cparam| a1 v1 |], .., [cparam| an vn |]]
+--
+cParams :: [QC.Type] -> [TH.Name] -> [QC.Param]
+cParams [] []                     = []
+cParams (argTy:argTys) (var:vars) = [cparam| $ty:argTy $id:(show var) |] : cParams argTys vars
+
+-- Produce a Haskell expression that calls a function with all arguments and the result marshalled with the supplied
+-- marshallers.
+--
+generateHSCall :: [TH.Name]
+               -> [HaskellMarshaller]
+               -> TH.ExpQ
+               -> HaskellMarshaller
+               -> Bool
+               -> TH.ExpQ
+generateHSCall vars hsArgMarshallers f hsResMarshaller inIO
+  = invoke [hsArgMarshaller (varE var) | (var, hsArgMarshaller) <- zip vars hsArgMarshallers]
+           f
+           (if inIO then [| \call -> do {      cresult <- call ; $(hsResMarshaller [|cresult|] [|return|]) } |]
+                    else [| \call -> do { let {cresult =  call}; $(hsResMarshaller [|cresult|] [|return|]) } |])
+  where
       -- invoke [v1, .., vn] [a1, .., an] call r = [| a1 (\v1 -> .. -> an (\vn -> r (call v1 .. vn))..) |]    
     invoke :: [TH.ExpQ -> TH.ExpQ] -> TH.ExpQ -> TH.ExpQ -> TH.ExpQ
     invoke []         call ret = [| $ret $call |]
     invoke (arg:args) call ret = arg [| \name -> $(invoke args [| $call name |] ret)|]
-    
-      -- cParams [v1, .., vn] [a1, .., an] = [[cparam| a1 v1 |], .., [cparam| an vn |]]
-    cParams [] []                     = []
-    cParams (var:vars) (argTy:argTys) = [cparam| $ty:argTy $id:(show var) |] : cParams vars argTys
-    
+
 -- |Emit the Objective-C file and return the foreign declarations. Needs to be the last use of an 'objc...' function.
 -- (Just put it at the end of the Haskell module.)
 --

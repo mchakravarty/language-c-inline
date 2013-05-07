@@ -70,16 +70,16 @@ stashHeader :: String -> Q ()
 stashHeader header = modifyState (\s -> s {headers = header : headers s})
 
 stashObjC_h :: [QC.Definition] -> Q ()
-stashObjC_h defs = modifyState (\s -> s {hoistedObjC_h = defs ++ hoistedObjC_h s})
+stashObjC_h defs = modifyState (\s -> s {hoistedObjC_h = hoistedObjC_h s ++ defs})
 
 stashObjC_m :: [QC.Definition] -> Q ()
-stashObjC_m defs = modifyState (\s -> s {hoistedObjC_m = defs ++ hoistedObjC_m s})
+stashObjC_m defs = modifyState (\s -> s {hoistedObjC_m = hoistedObjC_m s ++ defs})
 
-stashHS :: TH.DecQ -> Q ()
-stashHS decQ 
+stashHS :: [TH.DecQ] -> Q ()
+stashHS decQs
   = do
-    { dec <- decQ
-    ; modifyState (\s -> s {hoistedHS = dec : hoistedHS s})
+    { decs <- sequence decQs
+    ; modifyState (\s -> s {hoistedHS = hoistedHS s ++ decs})
     }
 
 extendJumpTable :: Name -> Q Int

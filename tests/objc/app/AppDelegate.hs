@@ -8,6 +8,12 @@ import Language.C.Inline.ObjC
 objc_import ["<Cocoa/Cocoa.h>"]
 
 
+-- We are going to use this message in the Objective-C code of the app delegate.
+--
+launchMsg :: String
+launchMsg = "HSApp did finish launching!"
+
+
 objc_interface [cunit|
 
 @interface AppDelegate : NSObject <NSApplicationDelegate>
@@ -18,13 +24,13 @@ objc_interface [cunit|
 |]
 
 
-objc_implementation [] [cunit|
+objc_implementation ['launchMsg] [cunit|
 
 @implementation AppDelegate
 
 - (void)applicationDidFinishLaunching:(typename NSNotification *)aNotification
 {
-  NSLog(@"HSApp did finish launching!");
+  NSLog(@"%@", launchMsg());
 }
 
 @end
