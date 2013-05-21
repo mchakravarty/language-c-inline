@@ -134,8 +134,8 @@ generateHaskellToCMarshaller hsTy cTy
   | otherwise
   = reportErrorAndFail ObjC $ "cannot marshal '" ++ TH.pprint hsTy ++ "' to '" ++ prettyQC cTy ++ "'"
 
-generateCToHaskellMarshaller :: TH.Name -> QC.Type -> Q (TH.TypeQ, QC.Type, HaskellMarshaller, CMarshaller)
-generateCToHaskellMarshaller hsTyName cTy
+generateCToHaskellMarshaller :: TH.Type -> QC.Type -> Q (TH.TypeQ, QC.Type, HaskellMarshaller, CMarshaller)
+generateCToHaskellMarshaller hsTy cTy
   | cTy == [cty| typename NSString * |]
   = return ( [t| C.CString |]
            , [cty| char * |]
@@ -159,5 +159,5 @@ generateCToHaskellMarshaller hsTyName cTy
            , \argName -> [cexp| $id:(show argName) |]
            )
   | otherwise
-  = reportErrorAndFail ObjC $ "cannot marshall '" ++ prettyQC cTy ++ "' to '" ++ pprint hsTyName ++ "'"    
+  = reportErrorAndFail ObjC $ "cannot marshall '" ++ prettyQC cTy ++ "' to '" ++ TH.pprint hsTy ++ "'"    
 

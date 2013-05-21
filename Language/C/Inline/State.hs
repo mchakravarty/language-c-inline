@@ -16,7 +16,7 @@ module Language.C.Inline.State (
   State,
   
   -- * State query and update operations
-  setForeignTable, stashHeader, stashObjC, stashHS, 
+  setForeignTable, stashHeader, stashObjC_h, stashObjC_m, stashHS, 
   extendJumpTable,
   getForeignTable, getForeignLabels, getHeaders, getHoistedObjC, getHoistedHS
 ) where
@@ -38,7 +38,8 @@ data State
     { foreignTable  :: Q TH.Exp            -- table of foreign labels
     , foreignLabels :: [Name]              -- list of foreign imported names to populate 'foreignTable'
     , headers       :: [String]            -- imported Objective-C headers
-    , hoistedObjC   :: [QC.Definition]     -- Objective-C that goes into the .m
+    , hoistedObjC_h :: [QC.Definition]     -- Objective-C that goes into the .h
+    , hoistedObjC_m :: [QC.Definition]     -- Objective-C that goes into the .m
     , hoistedHS     :: [TH.Dec]            -- Haskell that goes at the end of the module
     }
 
@@ -50,7 +51,8 @@ state = unsafePerformIO $
             { foreignTable  = error "InlineObjC: internal error: 'foreignTable' undefined"
             , foreignLabels = []
             , headers       = []
-            , hoistedObjC   = []
+            , hoistedObjC_h = []
+            , hoistedObjC_m = []
             , hoistedHS     = []
             }
 
@@ -67,14 +69,17 @@ setForeignTable e = modifyState (\s -> s {foreignTable = e})
 stashHeader :: String -> Q ()
 stashHeader header = modifyState (\s -> s {headers = header : headers s})
 
-stashObjC :: QC.Definition -> Q ()
-stashObjC def = modifyState (\s -> s {hoistedObjC = def : hoistedObjC s})
+stashObjC_h :: [QC.Definition] -> Q ()
+stashObjC_h defs = modifyState (\s -> s {hoistedObjC_h = hoistedObjC_h s ++ defs})
 
-stashHS :: TH.DecQ -> Q ()
-stashHS decQ 
+stashObjC_m :: [QC.Definition] -> Q ()
+stashObjC_m defs = modifyState (\s -> s {hoistedObjC_m = hoistedObjC_m s ++ defs})
+
+stashHS :: [TH.DecQ] -> Q ()
+stashHS decQs
   = do
-    { dec <- decQ
-    ; modifyState (\s -> s {hoistedHS = dec : hoistedHS s})
+    { decs <- sequence decQs
+    ; modifyState (\s -> s {hoistedHS = hoistedHS s ++ decs})
     }
 
 extendJumpTable :: Name -> Q Int
@@ -93,8 +98,8 @@ getForeignLabels = readState foreignLabels
 getHeaders :: Q [String]
 getHeaders = reverse <$> readState headers
 
-getHoistedObjC :: Q [QC.Definition]
-getHoistedObjC = readState hoistedObjC
+getHoistedObjC :: Q ([QC.Definition], [QC.Definition])
+getHoistedObjC = (,) <$> readState hoistedObjC_h <*> readState hoistedObjC_m
 
 getHoistedHS :: Q [TH.Dec]
 getHoistedHS = readState hoistedHS
