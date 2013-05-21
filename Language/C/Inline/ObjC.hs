@@ -120,10 +120,11 @@ objc_implementation vars defs
             ]
 
             -- Generate the C wrapper code (both prototype and definition)
-        ; cArgVars <- mapM (const $ newName "arg") cBridgeArgTys
-        ; let call = [cexp| $id:(show hswrapperName) ( $args:(map show cArgVars) ) |]
+        ; cArgVars <- mapM (\n -> newName $ "arg" ++ show n) [1..length cBridgeArgTys]
+        ; let cArgVarExps = [ [cexp| $id:(nameBase var) |] | var <- cArgVars]
+              call        = [cexp| $id:(show hswrapperName) ( $args:cArgVarExps ) |]
               (_wrapperProto, wrapperDef) 
-                = generateCWrapper cwrapperName cBridgeArgTys vars cArgMarshallers cArgTys cArgVars 
+                       = generateCWrapper cwrapperName cBridgeArgTys cArgVars cArgMarshallers cArgTys cArgVars
                                    call
                                    resTy cBridgeResTy cResMarshaller cResTy
         ; stashObjC_m $
@@ -220,11 +221,11 @@ haskellWrapperType (argTy:argTys) resTy = [t| $argTy -> $(haskellWrapperType arg
 --
 generateCWrapper :: TH.Name 
                  -> [QC.Type]
-                 -> [TH.Name]
+                 -> [TH.Name]       -- name of arguments after marshalling (will be the original name without unique)
                  -> [CMarshaller]
                  -> [QC.Type]
                  -> [TH.Name]
-                 -> QC.Exp
+                 -> QC.Exp          -- C expression containing occurences of the arguments (using names without uniques)
                  -> TH.Type
                  -> QC.Type
                  -> CMarshaller

@@ -1,4 +1,5 @@
 HC      = ghc
+CFLAGS  = -fobjc-arc
 HCFLAGS = 
 LDFLAGS = -package template-haskell -package language-c-quote -package language-c-inline -framework Cocoa -optl-ObjC
 
