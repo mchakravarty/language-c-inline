@@ -20,4 +20,4 @@ InlineObjC: $(OBJS)
 .PHONY: clean
 
 clean:
-	rm -f *.o *.hi TestInlineObjC_objc.m InlineObjC
+	rm -f *.o *.hi TestInlineObjC_objc.[hm] InlineObjC
