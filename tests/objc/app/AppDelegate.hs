@@ -23,9 +23,10 @@ launchMsg = "HSApp did finish launching!"
 
 evalExpr :: String -> IO String
 evalExpr expr 
-  = do { result <- eval expr
-       ; return $ "Prelude> " ++ expr ++ "\n" ++ result ++ "\n"
-       }
+  = do 
+    { result <- eval expr
+    ; return $ "Prelude> " ++ expr ++ "\n" ++ result ++ "\n"
+    }
 
 
 objc_interface [cunit|
