@@ -13,8 +13,20 @@ import Prelude hiding (catch)
 import Control.Applicative
 import Control.Exception
 
+  -- transformers
+import Control.Monad.Trans.Cont
+
   -- hint
 import qualified Language.Haskell.Interpreter as Interp
+
+
+-- |Interpreter monad stack
+--
+type Interpreter a = ContT () (InterpreterT Identity) a
+
+newInterpreter :: IO (Interpreter a)
+
+
 
 
 -- Evaluate a Haskell expression, 'show'ing its result.
