@@ -53,8 +53,8 @@ objc_import headers
     ; objc_jumptable <- newName "objc_jumptable"
     ; setForeignTable $ varE objc_jumptable
     ; sequence $ [ sigD objc_jumptable [t|IORef (Array Int Dynamic)|]
-                 -- , pragInlD objc_jumptable NoInline FunLike AllPhases    -- reqs template-haskell 2.8.0.0
-                 , pragInlD objc_jumptable (inlineSpecNoPhase False False)
+                 , pragInlD objc_jumptable NoInline FunLike AllPhases    -- reqs template-haskell 2.8.0.0
+                 -- , pragInlD objc_jumptable (inlineSpecNoPhase False False)
                  , valD (varP objc_jumptable) (normalB [|unsafePerformIO $ newIORef (array (0, 0) [])|]) []
                  ]
     -- ; return $ [d|import Language.C.Quote      as ObjC;
