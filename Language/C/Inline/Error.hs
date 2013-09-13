@@ -14,10 +14,10 @@
 module Language.C.Inline.Error (
   -- * Error reporting
   reportErrorAndFail,
-  
+
   -- * Exception handling
   tryWithPlaceholder,
-  
+
   -- * Pretty printing for error messages
   prettyQC
 ) where
@@ -34,7 +34,7 @@ import Text.PrettyPrint.Mainland  as QC
 reportErrorAndFail :: QC.Extensions -> String -> Q a
 reportErrorAndFail lang msg
   = do
-    { reportError lang msg
+    { reportError' lang msg
     ; fail "Failure"
     }
 
@@ -46,12 +46,12 @@ reportErrorAndFail lang msg
 --     ; return $ VarE undefinedName
 --     }
 
-reportError :: QC.Extensions -> String -> Q ()
-reportError lang msg
+reportError' :: QC.Extensions -> String -> Q ()
+reportError' lang msg
   = do
     { loc <- location
     -- FIXME: define a Show instance for 'Loc' and use it to prefix position to error
-    ; TH.report True $ "Inline " ++ showLang lang ++ ": " ++ msg 
+    ; TH.report True $ "Inline " ++ showLang lang ++ ": " ++ msg
     -- ; TH.reportError msg -- reqs template-haskell 2.8.0.0
     }
   where
