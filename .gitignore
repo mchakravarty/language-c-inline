@@ -25,3 +25,21 @@ tests/objc/app/App_objc.h
 tests/objc/concept/TestInlineObjC_objc.h
 
 tests/objc/app/AppDelegate_stub.h
+
+# Xcode (courtesy of github/Mantle)
+build/*
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+*.xcworkspace
+!default.xcworkspace
+xcuserdata
+profile
+*.moved-aside
+# Desktop Servies
+.DS_Store
