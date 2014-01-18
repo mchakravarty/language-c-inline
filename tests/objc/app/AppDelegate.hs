@@ -1,9 +1,17 @@
 {-# LANGUAGE TemplateHaskell, QuasiQuotes #-}
 
+-- HSApp: a simple Cocoa app in Haskell
+--
+-- Application delegate object, abused as a view controller
+
 module AppDelegate (objc_initialise) where
 
+  -- language-c-inline
 import Language.C.Quote.ObjC
 import Language.C.Inline.ObjC
+
+  -- friends
+import Interpreter
 
 objc_import ["<Cocoa/Cocoa.h>"]
 
@@ -13,8 +21,12 @@ objc_import ["<Cocoa/Cocoa.h>"]
 launchMsg :: String
 launchMsg = "HSApp did finish launching!"
 
-mkLine :: String -> String
-mkLine input = "> " ++ input ++ "\n"
+evalExpr :: String -> IO String
+evalExpr expr 
+  = do 
+    { result <- eval expr
+    ; return $ "Prelude> " ++ expr ++ "\n" ++ result ++ "\n"
+    }
 
 
 objc_interface [cunit|
@@ -25,6 +37,7 @@ objc_interface [cunit|
 @property (weak) typename NSWindow     *window;
 @property (weak) typename NSScrollView *scrollView;
 @property (weak) typename NSTextField  *textField;
+// FIXME: urgh: bug in the ObjC parser...
 // @property (weak, nonatomic) typename NSWindow     *window;
 // @property (weak, nonatomic) typename NSScrollView *scrollView;
 // @property (weak, nonatomic) typename NSTextField  *textField;
@@ -33,7 +46,7 @@ objc_interface [cunit|
 |]
 
 
-objc_implementation ['launchMsg, 'mkLine] [cunit|
+objc_implementation ['launchMsg, 'evalExpr] [cunit|
 
 @interface AppDelegate ()
 
@@ -48,19 +61,22 @@ objc_implementation ['launchMsg, 'mkLine] [cunit|
 - (void)applicationDidFinishLaunching:(typename NSNotification *)aNotification
 {
   self.textView = self.scrollView.documentView;
+  [self.textView becomeFirstResponder];
   NSLog(@"%@", launchMsg());
 }
 
 // IBAction
 - (void)textFieldDidSend:(typename NSTextField *)sender
 {
-  [self appendOutput:mkLine([sender stringValue])];
+  [self appendOutput:evalExpr([sender stringValue])];
   [sender setStringValue:@""];
 }
 
 - (void)appendOutput:(typename NSString *)text
 {
-  typename NSAttributedString *attrText = [[NSAttributedString alloc] initWithString:text];
+  typename NSFont             *menlo13  = [NSFont fontWithName:@"Menlo-Regular" size:13];
+  typename NSAttributedString *attrText = [[NSAttributedString alloc] initWithString:text 
+                                                                          attributes:@{ NSFontAttributeName : menlo13 }];
   [self.textView.textStorage appendAttributedString:attrText];
 }
 

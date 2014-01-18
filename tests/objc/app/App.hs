@@ -1,7 +1,8 @@
 {-# LANGUAGE TemplateHaskell, QuasiQuotes #-}
 
--- Demonstrates how to write a Cocoa app in Haskell
+-- HSApp: a simple Cocoa app in Haskell
 --
+-- Main application module entering AppKit's application framework
 
 module App (main, objc_initialise) where
 
