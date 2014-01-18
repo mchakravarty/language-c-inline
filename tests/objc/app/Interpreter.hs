@@ -20,12 +20,13 @@ import Control.Monad.Trans.Cont
 import qualified Language.Haskell.Interpreter as Interp
 
 
+{-
 -- |Interpreter monad stack
 --
-type Interpreter a = ContT () (InterpreterT Identity) a
+type Interpreter a = ContT () (Interp.InterpreterT Identity) a
 
 newInterpreter :: IO (Interpreter a)
-
+-}
 
 
 
