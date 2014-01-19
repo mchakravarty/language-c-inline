@@ -22,16 +22,17 @@ launchMsg :: String
 launchMsg = "HSApp did finish launching!"
 
 evalExpr :: String -> IO String
-evalExpr expr 
+evalExpr ""   = return ""
+evalExpr expr
   = do 
-    { session <- new
-    ; result <- eval session expr
+    { session <- start
+    ; result  <- eval session expr
+    ; stop session
     ; return $ "Prelude> " ++ expr ++ "\n" ++ showResult result ++ "\n"
     }
   where
     showResult (Result res) = res
     showResult (Error  err) = "ERROR: " ++ err
-
 
 objc_interface [cunit|
 
@@ -65,7 +66,6 @@ objc_implementation ['launchMsg, 'evalExpr] [cunit|
 - (void)applicationDidFinishLaunching:(typename NSNotification *)aNotification
 {
   self.textView = self.scrollView.documentView;
-  [self.textView becomeFirstResponder];
   NSLog(@"%@", launchMsg());
 }
 

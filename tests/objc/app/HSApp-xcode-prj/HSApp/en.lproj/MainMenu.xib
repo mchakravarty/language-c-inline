@@ -276,6 +276,9 @@
                     <constraint firstItem="536" firstAttribute="top" secondItem="372" secondAttribute="top" constant="20" symbolic="YES" id="567"/>
                 </constraints>
             </view>
+            <connections>
+                <outlet property="initialFirstResponder" destination="552" id="xfP-UB-2g3"/>
+            </connections>
         </window>
         <customObject id="494" customClass="AppDelegate">
             <connections>

@@ -1,4 +1,5 @@
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE PackageImports #-}
 
 -- HSApp: a simple Cocoa app in Haskell
 --
@@ -10,14 +11,21 @@
 --
 
 module Interpreter (
-  Session,
-  new, eval
+  Session, Result(..),
+  start, stop, eval
 ) where
 
   -- standard libraries
-import Prelude hiding (catch)
+import Prelude                      hiding (catch)
 import Control.Applicative
-import Control.Exception
+import Control.Concurrent
+import Control.Exception            (SomeException, evaluate)
+import Control.Monad
+import "MonadCatchIO-mtl" 
+       Control.Monad.CatchIO
+import Control.Monad.Error
+
+import System.IO
 
   -- hint
 import qualified Language.Haskell.Interpreter as Interp
@@ -25,19 +33,19 @@ import qualified Language.Haskell.Interpreter as Interp
 
 -- |Abstract handle of an interpreter session.
 --
-newtype Session = Session (MVar (Interpreter ()))
+newtype Session = Session (MVar (Maybe (Interp.Interpreter ())))
 
 -- |Possible results of executing an interpreter action.
 --
 data Result = Result String
             | Error  String
 
--- |Create a new interpreter session.
+-- |Start a new interpreter session.
 --
-new :: IO Session
-new
+start :: IO Session
+start
   = do
-    { inlet <- newMVar
+    { inlet <- newEmptyMVar
     ; forkIO $ void $ Interp.runInterpreter (startSession inlet)
     ; return $ Session inlet
     }
@@ -46,10 +54,20 @@ new
         
     session inlet
       = do
-        { command <- lift $ takeMVar inlet
-        ; command
-        ; session inlet
+        { maybeCommand <- Interp.lift $ takeMVar inlet
+        ; case maybeCommand of
+            Nothing      -> return ()
+            Just command -> 
+              do
+              { command
+              ; session inlet
+              }
         }
+
+-- Terminate an interpreter session.
+--
+stop :: Session -> IO ()
+stop (Session inlet) = putMVar inlet Nothing
 
 -- Evaluate a Haskell expression in the given interpreter session, 'show'ing its result.
 --
@@ -58,19 +76,20 @@ new
 eval :: Session -> String -> IO Result
 eval (Session inlet) e
   = do
-    { resultMV <- newMVar
-    ; putMVar inlet $ 
+    { resultMV <- newEmptyMVar
+    ; putMVar inlet $ Just $       -- the interpreter command we send over to the interpreter thread
         do
-        {   -- demand the result to force any contained exceptions
-        ; !result <- Interp.eval e
-        ; putMVar $ Result result
-        }
-        `catch` (return . Error . (show :: SomeException -> Result))
+          {                  -- demand the result to force any contained exceptions
+          ; result <- (do { !result <- Interp.eval e
+                          ; return result }
+                      `catchError` (return . pprError))
+                      `catch` (return . (show :: SomeException -> String))
+          ; Interp.lift $ putMVar resultMV (Result result)
+          }
+    ; takeMVar resultMV
     }
-
-{-
+  where
     pprError (Interp.UnknownError msg) = msg
     pprError (Interp.WontCompile errs) = "Compile time error: \n" ++ concatMap Interp.errMsg errs
     pprError (Interp.NotAllowed msg)   = "Permission denied: " ++ msg
     pprError (Interp.GhcException msg) = "Internal error: " ++ msg
--}

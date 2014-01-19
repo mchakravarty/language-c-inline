@@ -1,8 +1,8 @@
 HC      = ghc
 CFLAGS  = -fobjc-arc
-HCFLAGS = 
+HCFLAGS =
 LDFLAGS = -package template-haskell -package language-c-quote -package language-c-inline -package hint \
-          -framework Cocoa -optl-ObjC
+          -framework Cocoa -optl-ObjC -threaded
 
 OBJS = Main.o App.o App_objc.o AppDelegate.o AppDelegate_objc.o Interpreter.o
 
