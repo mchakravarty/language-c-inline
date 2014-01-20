@@ -31,6 +31,7 @@ module Language.C.Inline.ObjC.Marshal (
 import Foreign.C                  as C
 import Foreign.C.String           as C
 import Foreign.Marshal            as C
+import Foreign.StablePtr          as C
 import Language.Haskell.TH        as TH
 import Language.Haskell.TH.Syntax as TH
 
@@ -92,8 +93,8 @@ haskellTypeToCType lang (ListT `AppT` (ConT char))
   = haskellTypeNameToCType lang ''String
 haskellTypeToCType lang (ConT tc)
   = haskellTypeNameToCType lang tc
-haskellTypeToCType lang ty
-  = reportErrorAndFail lang $ "don't know a foreign type suitable for Haskell type '" ++ TH.pprint ty ++ "'"
+haskellTypeToCType _lang ty
+  = return [cty| typename HsStablePtr |]
 
 -- Determine the C type that we map a given Haskell type constructor to — i.e., we map all Haskell
 -- whose outermost constructor is the given type constructor to the returned C type..
@@ -103,26 +104,35 @@ haskellTypeNameToCType ObjC tyname
   | tyname == ''String = return [cty| typename NSString * |]
   | tyname == ''()     = return [cty| void |]
 haskellTypeNameToCType _lang tyname
-  = reportErrorAndFail ObjC $ "don't know a foreign type suitable for Haskell type name '" ++ show tyname ++ "'"
+  = return [cty| typename HsStablePtr |]
 
 
 -- Determine marshallers and their bridging types
 -- ----------------------------------------------
 
--- Constructs Haskell code to marshal a value (used to marhsall arguments and results).
+-- Constructs Haskell code to marshal a value (used to marshal arguments and results).
 --
 -- * The first argument is the code referring to the value to be marshalled.
 -- * The second argument is the continuation that gets the marshalled value as an argument.
 --
 type HaskellMarshaller = TH.ExpQ -> TH.ExpQ -> TH.ExpQ
 
--- Constructs C code to marhsall an argument (used to marshal arguments and results).
+-- Constructs C code to marshal an argument (used to marshal arguments and results).
 --
 -- * The argument is the identifier of the value to be marshalled.
 -- * The result of the generated expression is the marshalled value.
 --
 type CMarshaller = TH.Name -> QC.Exp
-  
+
+-- Generate the type-specific marshalling code for Haskell to C land marshalling for a Haskell-C type pair.
+--
+-- The result has the following components:
+--
+-- * Haskell type after Haskell-side marshalling.
+-- * C type before C-side marshalling.
+-- * Generator for the Haskell-side marshalling code.
+-- * Generator for the C-side marshalling code.
+--
 generateHaskellToCMarshaller :: TH.Type -> QC.Type -> Q (TH.TypeQ, QC.Type, HaskellMarshaller, CMarshaller)
 generateHaskellToCMarshaller hsTy cTy
   | cTy == [cty| typename NSString * |] 
@@ -131,9 +141,24 @@ generateHaskellToCMarshaller hsTy cTy
            , \val cont -> [| C.withCString $val $cont |]
            , \argName -> [cexp| [NSString stringWithUTF8String: $id:(show argName)] |]
            )
+  | cTy == [cty| typename HsStablePtr |] 
+  = return ( [t| C.StablePtr $(return hsTy) |]
+           , cTy
+           , \val cont -> [| do { C.newStablePtr $val >>= $cont } |]
+           , \argName -> [cexp| $id:(show argName) |]
+           )
   | otherwise
   = reportErrorAndFail ObjC $ "cannot marshal '" ++ TH.pprint hsTy ++ "' to '" ++ prettyQC cTy ++ "'"
 
+-- Generate the type-specific marshalling code for Haskell to C land marshalling for a C-Haskell type pair.
+--
+-- The result has the following components:
+--
+-- * Haskell type after Haskell-side marshalling.
+-- * C type before C-side marshalling.
+-- * Generator for the Haskell-side marshalling code.
+-- * Generator for the C-side marshalling code.
+--
 generateCToHaskellMarshaller :: TH.Type -> QC.Type -> Q (TH.TypeQ, QC.Type, HaskellMarshaller, CMarshaller)
 generateCToHaskellMarshaller hsTy cTy
   | cTy == [cty| typename NSString * |]
@@ -151,6 +176,12 @@ generateCToHaskellMarshaller hsTy cTy
                    buffer;
                  })
                |]
+           )
+  | cTy == [cty| typename HsStablePtr |] 
+  = return ( [t| C.StablePtr $(return hsTy) |]
+           , cTy
+           , \val cont -> [| do { C.deRefStablePtr $val >>= $cont } |]
+           , \argName -> [cexp| $id:(show argName) |]
            )
   | cTy == [cty| void |]
   = return ( [t| () |]

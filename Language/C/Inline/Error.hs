@@ -51,8 +51,7 @@ reportError' lang msg
   = do
     { loc <- location
     -- FIXME: define a Show instance for 'Loc' and use it to prefix position to error
-    ; TH.report True $ "Inline " ++ showLang lang ++ ": " ++ msg
-    -- ; TH.reportError msg -- reqs template-haskell 2.8.0.0
+    ; TH.reportError $ "Inline " ++ showLang lang ++ ": " ++ msg
     }
   where
     showLang QC.Antiquotation = "C"

@@ -1,55 +1,138 @@
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE PackageImports #-}
 
 -- HSApp: a simple Cocoa app in Haskell
 --
--- Management of GHC interpreter session through the 'hint' package.
+-- Management of GHC interpreter sessions through the 'hint' package.
+--
+-- Interpreter sessions run in their own thread. They receive interpreter commands as monadic 'Interpreter' computations
+-- via an inlet 'MVar'. These commands return the result of command execution via another 'MVar' specifically used only
+-- for this one command.
+--
 
 module Interpreter (
-  eval
+  Session, Result(..),
+  start, stop, eval, typeOf, load
 ) where
 
   -- standard libraries
-import Prelude hiding (catch)
+import Prelude                      hiding (catch)
 import Control.Applicative
-import Control.Exception
+import Control.Concurrent
+import Control.Exception            (SomeException, evaluate)
+import Control.Monad
+import "MonadCatchIO-mtl" 
+       Control.Monad.CatchIO
+import Control.Monad.Error
 
-  -- transformers
-import Control.Monad.Trans.Cont
+import System.IO
 
   -- hint
 import qualified Language.Haskell.Interpreter as Interp
 
 
-{-
--- |Interpreter monad stack
+-- |Abstract handle of an interpreter session.
 --
-type Interpreter a = ContT () (Interp.InterpreterT Identity) a
+newtype Session = Session (MVar (Maybe (Interp.Interpreter ())))
 
-newInterpreter :: IO (Interpreter a)
--}
-
-
-
--- Evaluate a Haskell expression, 'show'ing its result.
+-- |Possible results of executing an interpreter action.
 --
--- Each time this function is called a new interpreter context is launched. No state is kept between two subsequent
--- evaluations.
+data Result = Result String
+            | Error  String
+
+-- |Start a new interpreter session.
+--
+start :: IO Session
+start
+  = do
+    { inlet <- newEmptyMVar
+    ; forkIO $ void $ Interp.runInterpreter (startSession inlet)
+    ; return $ Session inlet
+    }
+  where
+    startSession inlet = Interp.setImports ["Prelude"] >> session inlet
+        
+    session inlet
+      = do
+        { maybeCommand <- Interp.lift $ takeMVar inlet
+        ; case maybeCommand of
+            Nothing      -> return ()
+            Just command -> 
+              do
+              { command
+              ; session inlet
+              }
+        }
+
+-- Terminate an interpreter session.
+--
+stop :: Session -> IO ()
+stop (Session inlet) = putMVar inlet Nothing
+
+-- Evaluate a Haskell expression in the given interpreter session, 'show'ing its result.
 --
 -- If GHC raises an error, we pretty print it.
 --
-eval :: String -> IO String
-eval e
-  = do 
-    {   -- demand the result to force any contained exceptions
-    ; !result <- either pprError id <$> (Interp.runInterpreter $ do
-                   { Interp.setImports ["Prelude"]
-                   ; Interp.eval e
-                   })
-    ; return result
+eval :: Session -> String -> IO Result
+eval (Session inlet) e
+  = do
+    { resultMV <- newEmptyMVar
+    ; putMVar inlet $ Just $       -- the interpreter command we send over to the interpreter thread
+        do
+          {                  -- demand the result to force any contained exceptions
+          ; result <- (do { !result <- Interp.eval e
+                          ; return result }
+                      `catchError` (return . pprError))
+                      `catch` (return . (show :: SomeException -> String))
+          ; Interp.lift $ putMVar resultMV (Result result)
+          }
+    ; takeMVar resultMV
     }
-    `catch` (return . (show :: SomeException -> String))
-  where
-    pprError (Interp.UnknownError msg) = msg
-    pprError (Interp.WontCompile errs) = "Compile time error: \n" ++ concatMap Interp.errMsg errs
-    pprError (Interp.NotAllowed msg)   = "Permission denied: " ++ msg
-    pprError (Interp.GhcException msg) = "Internal error: " ++ msg
+
+-- Infer the type of a Haskell expression in the given interpreter session.
+--
+-- If GHC raises an error, we pretty print it.
+--
+typeOf :: Session -> String -> IO Result
+typeOf (Session inlet) e
+  = do
+    { resultMV <- newEmptyMVar
+    ; putMVar inlet $ Just $       -- the interpreter command we send over to the interpreter thread
+        do
+          {                  -- demand the result to force any contained exceptions
+          ; result <- (do { !result <- Interp.typeOf e
+                          ; return result }
+                      `catchError` (return . pprError))
+                      `catch` (return . (show :: SomeException -> String))
+          ; Interp.lift $ putMVar resultMV (Result result)
+          }
+    ; takeMVar resultMV
+    }
+
+-- Load a module into in the given interpreter session.
+--
+-- If GHC raises an error, we pretty print it.
+--
+load :: Session -> String -> IO Result
+load (Session inlet) mname
+  = do
+    { resultMV <- newEmptyMVar
+    ; putMVar inlet $ Just $       -- the interpreter command we send over to the interpreter thread
+        do
+          {                  -- demand the result to force any contained exceptions
+          ; result <- (do { Interp.loadModules [mname]
+                          ; mods <- Interp.getLoadedModules
+                          ; Interp.setTopLevelModules mods
+                          ; return ("Successfully loaded '" ++ mname ++ "'") }
+                      `catchError` (return . pprError))
+                      `catch` (return . (show :: SomeException -> String))
+          ; Interp.lift $ putMVar resultMV (Result result)
+          }
+    ; takeMVar resultMV
+    }
+
+pprError :: Interp.InterpreterError -> String
+pprError (Interp.UnknownError msg) = msg
+pprError (Interp.WontCompile errs) = "Compile time error: \n" ++ concatMap Interp.errMsg errs
+pprError (Interp.NotAllowed msg)   = "Permission denied: " ++ msg
+pprError (Interp.GhcException msg) = "Internal error: " ++ msg

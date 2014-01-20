@@ -1,7 +1,7 @@
 Name:                   language-c-inline
-Version:                0.2.0.0
+Version:                0.3.0.0
 Cabal-version:          >= 1.9.2
-Tested-with:            GHC == 7.4.2
+Tested-with:            GHC == 7.6.3
 Build-type:             Simple
 
 Synopsis:               Inline C & Objective-C code in Haskell for language interoperability
@@ -16,6 +16,9 @@ Description:            This library provides inline C & Objective-C code using 
                         .
                         Known bugs: <https://github.com/mchakravarty/language-c-inline/issues>
                         .
+                        * New in 0.3.0.0: Boxed Haskell types without a dedicated type mapping are marshalled using stable
+                        pointers.
+                        .
                         * New in 0.2.0.0: Support for multiple free variables in one inline expression as well
                         as for inline code returning 'void'.
                         .
@@ -24,7 +27,7 @@ Description:            This library provides inline C & Objective-C code using 
 License:                BSD3
 License-file:           LICENSE
 Author:                 Manuel M T Chakravarty
-Maintainer:             Manuel M T Chakravarty <chak@cse.unsw.edu.au>
+Maintainer:             Manuel M T Chakravarty <chak@justtesting.org>
 Homepage:               https://github.com/mchakravarty/language-c-inline/
 Bug-reports:            https://github.com/mchakravarty/language-c-inline/issues
 
