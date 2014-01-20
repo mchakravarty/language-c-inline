@@ -12,7 +12,7 @@
 
 module Interpreter (
   Session, Result(..),
-  start, stop, eval, typeOf
+  start, stop, eval, typeOf, load
 ) where
 
   -- standard libraries
@@ -102,6 +102,28 @@ typeOf (Session inlet) e
           {                  -- demand the result to force any contained exceptions
           ; result <- (do { !result <- Interp.typeOf e
                           ; return result }
+                      `catchError` (return . pprError))
+                      `catch` (return . (show :: SomeException -> String))
+          ; Interp.lift $ putMVar resultMV (Result result)
+          }
+    ; takeMVar resultMV
+    }
+
+-- Load a module into in the given interpreter session.
+--
+-- If GHC raises an error, we pretty print it.
+--
+load :: Session -> String -> IO Result
+load (Session inlet) mname
+  = do
+    { resultMV <- newEmptyMVar
+    ; putMVar inlet $ Just $       -- the interpreter command we send over to the interpreter thread
+        do
+          {                  -- demand the result to force any contained exceptions
+          ; result <- (do { Interp.loadModules [mname]
+                          ; mods <- Interp.getLoadedModules
+                          ; Interp.setTopLevelModules mods
+                          ; return ("Successfully loaded '" ++ mname ++ "'") }
                       `catchError` (return . pprError))
                       `catch` (return . (show :: SomeException -> String))
           ; Interp.lift $ putMVar resultMV (Result result)

@@ -26,11 +26,11 @@ evalExpr _session ""
   = return ""
 evalExpr session input@(':' : withCommand)
   = case break (== ' ') withCommand of
-      ("type", expr) -> do
-                        { result <- typeOf session expr
-                        ; return $ formatResult input result
-                        }
-      (command, _)   -> return $ "Prelude> " ++ input ++ "\nUnknown command" ++ command ++ "\n"
+      ("type", expr)  -> do
+                         { result <- typeOf session expr
+                         ; return $ formatResult input result
+                         }
+      (command, _)    -> return $ "Haskell> " ++ input ++ "\nUnknown command" ++ command ++ "\n"
 evalExpr session expr
   = do 
     { result <- eval session expr
@@ -38,8 +38,15 @@ evalExpr session expr
     }
   where
 
+loadModule :: Session -> String -> IO String
+loadModule session mname
+  = do
+    { result <- load session mname
+    ; return $ formatResult "" result      
+    }
+
 formatResult :: String -> Result -> String
-formatResult input result = "Prelude> " ++ input ++ "\n" ++ showResult result ++ "\n"
+formatResult input result = (if null input then "" else "Haskell> " ++ input ++ "\n") ++ showResult result ++ "\n"
   where
     showResult (Result res) = res
     showResult (Error  err) = "ERROR: " ++ err
@@ -47,7 +54,7 @@ formatResult input result = "Prelude> " ++ input ++ "\n" ++ showResult result ++
 
 objc_interface [cunit|
 
-@interface AppDelegate : NSObject <NSApplicationDelegate>
+@interface AppDelegate : NSResponder <NSApplicationDelegate>
 
 // IBOutlets
 @property (weak, nonatomic) typename NSWindow     *window;
@@ -58,7 +65,7 @@ objc_interface [cunit|
 |]
 
 
-objc_implementation ['launchMsg, 'start, 'evalExpr] [cunit|
+objc_implementation ['launchMsg, 'start, 'evalExpr, 'loadModule] [cunit|
 
 @interface AppDelegate ()
 
@@ -76,7 +83,7 @@ objc_implementation ['launchMsg, 'start, 'evalExpr] [cunit|
 
 - (void)applicationDidFinishLaunching:(typename NSNotification *)aNotification
 {
-  [[self.textField cell] setPlaceholderString:@"Enter an expression, or use the :type or :load command"];
+  [[self.textField cell] setPlaceholderString:@"Enter an expression, or use the :type command"];
   self.textView           = self.scrollView.documentView;
   self.interpreterSession = start();
   NSLog(@"%@", launchMsg());
@@ -97,6 +104,21 @@ objc_implementation ['launchMsg, 'start, 'evalExpr] [cunit|
   [self.textView.textStorage appendAttributedString:attrText];
 }
 
+- (void)openDocument:(id)sender
+{
+  typename NSOpenPanel* panel = [NSOpenPanel openPanel];
+  [panel setMessage:@"Select a Haskell module to load."];
+  [panel setAllowedFileTypes:@[@"hs", @"lhs"]];
+  [panel beginSheetModalForWindow:self.window completionHandler:^(typename NSInteger result){
+    if (result == NSFileHandlingPanelOKButton) {
+
+      typename NSArray* urls = [panel URLs];  
+      [self appendOutput:loadModule(self.interpreterSession, [[urls firstObject] path])];
+            
+    }
+  
+  }];
+}
 
 @end
 |]
