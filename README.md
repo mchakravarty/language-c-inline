@@ -1,9 +1,3 @@
-THIS IS STILL PROOF OF CONCEPT
-==============================
-
-It is not really useful for anything at the moment.
-
-
 Inline C &amp; Objective-C in Haskell
 =====================================
 
@@ -17,11 +11,14 @@ To build the library, just use `cabal install` as usual. To build the proof of c
 * Execute `cd tests/objc/concept; make`.
 * Now run the demo executable with `./InlineObjC`.
 
-I tested it with Haskell Platform 2012.4.0.0 (which includes GHC 7.4.2) and it requires the latest version of `language-c-quote`, which is 0.7.1.
+To build the more complex Haskell interpreter app:
 
-Contents
---------
-The proof of concept has two main components:
+* Execute `cd tests/objc/app; make`.
+* Now `open -a HSApp.app`.
 
-* `tests/objc/concept/InlineObjC.hs`: This is an example of what a user writes to use the Inline C & Objective-C library.
-* `Language/C/Inline/ObjC.hs`: This is a mock up of the Template Haskell that turns inline Objective-C code into a helper Objective-C file (here, it is `TestInlineObjC_objc.m`) and vanilla Haskell that invokes the Objective-C code via the regular Haskell C FFI. It works for this example, but is otherwise rather incomplete.
+I tested it with Haskell Platform 2013.2.0.0 (which includes GHC 7.6.3) and it requires the latest version of `language-c-quote`, which is 0.7.6.
+
+Status
+======
+
+The library is still in its early stages. At the moment automatic marshalling support is limited to strings and boxed Haskell values represented as stable pointers in C land. However, it is quite easy to add more types, and I do welcome pull request!
