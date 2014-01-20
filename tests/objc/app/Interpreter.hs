@@ -12,7 +12,7 @@
 
 module Interpreter (
   Session, Result(..),
-  start, stop, eval
+  start, stop, eval, typeOf
 ) where
 
   -- standard libraries
@@ -88,8 +88,29 @@ eval (Session inlet) e
           }
     ; takeMVar resultMV
     }
-  where
-    pprError (Interp.UnknownError msg) = msg
-    pprError (Interp.WontCompile errs) = "Compile time error: \n" ++ concatMap Interp.errMsg errs
-    pprError (Interp.NotAllowed msg)   = "Permission denied: " ++ msg
-    pprError (Interp.GhcException msg) = "Internal error: " ++ msg
+
+-- Infer the type of a Haskell expression in the given interpreter session.
+--
+-- If GHC raises an error, we pretty print it.
+--
+typeOf :: Session -> String -> IO Result
+typeOf (Session inlet) e
+  = do
+    { resultMV <- newEmptyMVar
+    ; putMVar inlet $ Just $       -- the interpreter command we send over to the interpreter thread
+        do
+          {                  -- demand the result to force any contained exceptions
+          ; result <- (do { !result <- Interp.typeOf e
+                          ; return result }
+                      `catchError` (return . pprError))
+                      `catch` (return . (show :: SomeException -> String))
+          ; Interp.lift $ putMVar resultMV (Result result)
+          }
+    ; takeMVar resultMV
+    }
+
+pprError :: Interp.InterpreterError -> String
+pprError (Interp.UnknownError msg) = msg
+pprError (Interp.WontCompile errs) = "Compile time error: \n" ++ concatMap Interp.errMsg errs
+pprError (Interp.NotAllowed msg)   = "Permission denied: " ++ msg
+pprError (Interp.GhcException msg) = "Internal error: " ++ msg

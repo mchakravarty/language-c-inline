@@ -22,12 +22,24 @@ launchMsg :: String
 launchMsg = "HSApp did finish launching!"
 
 evalExpr :: Session -> String -> IO String
-evalExpr _session ""   = return ""
-evalExpr session  expr
+evalExpr _session ""
+  = return ""
+evalExpr session input@(':' : withCommand)
+  = case break (== ' ') withCommand of
+      ("type", expr) -> do
+                        { result <- typeOf session expr
+                        ; return $ formatResult input result
+                        }
+      (command, _)   -> return $ "Prelude> " ++ input ++ "\nUnknown command" ++ command ++ "\n"
+evalExpr session expr
   = do 
     { result <- eval session expr
-    ; return $ "Prelude> " ++ expr ++ "\n" ++ showResult result ++ "\n"
+    ; return $ formatResult expr result
     }
+  where
+
+formatResult :: String -> Result -> String
+formatResult input result = "Prelude> " ++ input ++ "\n" ++ showResult result ++ "\n"
   where
     showResult (Result res) = res
     showResult (Error  err) = "ERROR: " ++ err
@@ -64,6 +76,7 @@ objc_implementation ['launchMsg, 'start, 'evalExpr] [cunit|
 
 - (void)applicationDidFinishLaunching:(typename NSNotification *)aNotification
 {
+  [[self.textField cell] setPlaceholderString:@"Enter an expression, or use the :type or :load command"];
   self.textView           = self.scrollView.documentView;
   self.interpreterSession = start();
   NSLog(@"%@", launchMsg());
