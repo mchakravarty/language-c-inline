@@ -41,7 +41,7 @@
 	<key>LSMinimumSystemVersion</key>
 	<string>10.8</string>
 	<key>NSHumanReadableCopyright</key>
-	<string>Copyright © 2013 Manuel M T Chakravarty. All rights reserved.</string>
+	<string>Written by Manuel M T Chakravarty.</string>
 	<key>NSMainNibFile</key>
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>

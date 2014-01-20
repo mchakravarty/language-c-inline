@@ -13,7 +13,7 @@ import Language.C.Inline.ObjC
   -- friends
 import Interpreter
 
-objc_import ["<Cocoa/Cocoa.h>"]
+objc_import ["<Cocoa/Cocoa.h>", "HsFFI.h"]
 
 
 -- Haskell code used from Objective-C.
@@ -21,41 +21,40 @@ objc_import ["<Cocoa/Cocoa.h>"]
 launchMsg :: String
 launchMsg = "HSApp did finish launching!"
 
-evalExpr :: String -> IO String
-evalExpr ""   = return ""
-evalExpr expr
+evalExpr :: Session -> String -> IO String
+evalExpr _session ""   = return ""
+evalExpr session  expr
   = do 
-    { session <- start
-    ; result  <- eval session expr
-    ; stop session
+    { result <- eval session expr
     ; return $ "Prelude> " ++ expr ++ "\n" ++ showResult result ++ "\n"
     }
   where
     showResult (Result res) = res
     showResult (Error  err) = "ERROR: " ++ err
 
+
 objc_interface [cunit|
 
 @interface AppDelegate : NSObject <NSApplicationDelegate>
 
 // IBOutlets
-@property (weak) typename NSWindow     *window;
-@property (weak) typename NSScrollView *scrollView;
-@property (weak) typename NSTextField  *textField;
-// FIXME: urgh: bug in the ObjC parser...
-// @property (weak, nonatomic) typename NSWindow     *window;
-// @property (weak, nonatomic) typename NSScrollView *scrollView;
-// @property (weak, nonatomic) typename NSTextField  *textField;
+@property (weak, nonatomic) typename NSWindow     *window;
+@property (weak, nonatomic) typename NSScrollView *scrollView;
+@property (weak, nonatomic) typename NSTextField  *textField;
 
 @end
 |]
 
 
-objc_implementation ['launchMsg, 'evalExpr] [cunit|
+objc_implementation ['launchMsg, 'start, 'evalExpr] [cunit|
 
 @interface AppDelegate ()
 
-@property typename NSTextView *textView;
+// The NSTextView in the UI.
+@property (nonatomic) typename NSTextView *textView;
+
+// Reference to the interpreter session in Haskell land.
+@property (assign) typename HsStablePtr interpreterSession;
 
 - (void)appendOutput:(typename NSString *)text;
 
@@ -65,14 +64,15 @@ objc_implementation ['launchMsg, 'evalExpr] [cunit|
 
 - (void)applicationDidFinishLaunching:(typename NSNotification *)aNotification
 {
-  self.textView = self.scrollView.documentView;
+  self.textView           = self.scrollView.documentView;
+  self.interpreterSession = start();
   NSLog(@"%@", launchMsg());
 }
 
 // IBAction
 - (void)textFieldDidSend:(typename NSTextField *)sender
 {
-  [self appendOutput:evalExpr([sender stringValue])];
+  [self appendOutput:evalExpr(self.interpreterSession, [sender stringValue])];
   [sender setStringValue:@""];
 }
 
