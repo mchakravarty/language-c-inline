@@ -1,5 +1,5 @@
 Name:                   language-c-inline
-Version:                0.3.0.0
+Version:                0.3.0.1
 Cabal-version:          >= 1.9.2
 Tested-with:            GHC == 7.6.3
 Build-type:             Simple
@@ -9,8 +9,8 @@ Description:            This library provides inline C & Objective-C code using 
                         quasi-quotation. In particular, it enables the use of foreign libraries
                         without a dedicated bridge or binding. Here is a tiny example:
                         .
-                        > log :: String -> IO ()
-                        > log msg = $(objc 'msg [cexp| NSLog (@"Here is a message from Haskell: %@", msg) |])
+                        > nslog :: String -> IO ()
+                        > nslog msg = $(objc ['msg] ''() [cexp| NSLog(@"Here is a message from Haskell: %@", msg) |])
                         .
                         For more information, see <https://github.com/mchakravarty/language-c-inline/wiki>.
                         .
@@ -47,6 +47,8 @@ Extra-source-files:     README.md
                         tests/objc/app/HSApp.app/Contents/Resources/en.lproj/Credits.rtf
                         tests/objc/app/HSApp.app/Contents/Resources/en.lproj/InfoPlist.strings
                         tests/objc/app/HSApp.app/Contents/Resources/en.lproj/MainMenu.nib
+                        tests/objc/minimal/Makefile
+                        tests/objc/minimal/Main.hs
 
 Source-repository head
   Type:                 git
@@ -54,7 +56,7 @@ Source-repository head
 
 Library
   Build-depends:        array,
-                        base              >= 4.0,
+                        base              >= 4.0 && < 5,
                         filepath          >= 1.2,
                         language-c-quote  >= 0.7,
                         mainland-pretty   >= 0.2.5,
@@ -70,7 +72,7 @@ Library
 
 -- Doesn't work!!! Use the Makefile in the tests/ instead. (How can we get cabal to compile & link the generated ObjC files?)
 Test-Suite concept
-  Build-depends:        base              >= 4.0,
+  Build-depends:        base              >= 4.0 && < 5,
                         language-c-quote,
                         language-c-inline
   

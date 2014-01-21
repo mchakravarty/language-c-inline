@@ -43,3 +43,9 @@ profile
 *.moved-aside
 # Desktop Servies
 .DS_Store
+
+tests/objc/minimal/Main_objc.h
+
+tests/objc/minimal/Main_objc.m
+
+tests/objc/minimal/Minimal
