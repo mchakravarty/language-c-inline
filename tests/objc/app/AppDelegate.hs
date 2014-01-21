@@ -102,6 +102,7 @@ objc_implementation ['launchMsg, 'start, 'evalExpr, 'loadModule] [cunit|
   typename NSAttributedString *attrText = [[NSAttributedString alloc] initWithString:text 
                                                                           attributes:@{ NSFontAttributeName : menlo13 }];
   [self.textView.textStorage appendAttributedString:attrText];
+  [self.textView scrollRangeToVisible:NSMakeRange([self.textView.textStorage length], 0)];
 }
 
 - (void)openDocument:(id)sender
