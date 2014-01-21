@@ -6,7 +6,14 @@ This library uses Template Haskell and `language-c-quote`, a quasi-quotation lib
 Building
 --------
 
-To build the library, just use `cabal install` as usual. To build the proof of concept example, do the following
+To build the library, just use `cabal install` as usual from the source code directory or by installing from Hackage.
+
+You may like to have a look at a [minimal example](blob/master/tests/objc/minimal/Main.hs) of its use, which you can build as follows:
+
+* Execute `cd tests/objc/minimal; make`.
+* Now run the demo executable with `./Minimal`.
+
+To build the proof of concept example, do the following:
 
 * Execute `cd tests/objc/concept; make`.
 * Now run the demo executable with `./InlineObjC`.
