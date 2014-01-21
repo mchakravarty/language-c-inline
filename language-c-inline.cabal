@@ -35,6 +35,18 @@ Category:               Language, Foreign
 Stability:              Experimental
 
 Extra-source-files:     README.md
+                        tests/objc/concept/Makefile
+                        tests/objc/app/App.hs
+                        tests/objc/app/AppDelegate.hs
+                        tests/objc/app/Interpreter.hs
+                        tests/objc/app/Main.hs
+                        tests/objc/app/Makefile
+                        tests/objc/app/Readme.md
+                        tests/objc/app/HSApp.app/Contents/Info.plist
+                        tests/objc/app/HSApp.app/Contents/MacOS/.gitkeep
+                        tests/objc/app/HSApp.app/Contents/Resources/en.lproj/Credits.rtf
+                        tests/objc/app/HSApp.app/Contents/Resources/en.lproj/InfoPlist.strings
+                        tests/objc/app/HSApp.app/Contents/Resources/en.lproj/MainMenu.nib
 
 Source-repository head
   Type:                 git
@@ -56,9 +68,19 @@ Library
 
   Extensions:           TemplateHaskell, QuasiQuotes
 
--- This doesn't work for some reason.
-Test-Suite objc
+-- Doesn't work!!! Use the Makefile in the tests/ instead. (How can we get cabal to compile & link the generated ObjC files?)
+Test-Suite concept
+  Build-depends:        base              >= 4.0,
+                        language-c-quote,
+                        language-c-inline
+  
+  Frameworks:           Foundation
+
   Type:                 exitcode-stdio-1.0
-  Hs-source-dirs:       tests/objc
-  Main-is:              tests/objc/MainInlineObjC.hs
+
+  Hs-source-dirs:       tests/objc/concept
+
+  Main-is:              MainInlineObjC.hs
+
   Other-modules:        TestInlineObjC
+  
