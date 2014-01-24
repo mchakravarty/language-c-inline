@@ -1,5 +1,5 @@
 Name:                   language-c-inline
-Version:                0.3.0.1
+Version:                0.3.0.2
 Cabal-version:          >= 1.9.2
 Tested-with:            GHC == 7.6.3
 Build-type:             Simple
