@@ -91,7 +91,7 @@ objc_implementation vars defs
     exportVar var
       = do
         {   -- Determine the argument and result types of the exported Haskell function
-        ; (argTys, inIO, resTy) <- splitHaskellType <$> determineVarType var
+        ; (tvs, argTys, inIO, resTy) <- splitHaskellType <$> determineVarType var
 
             -- Determine C types
         ; cArgTys <- mapM (haskellTypeToCType ObjC) argTys
@@ -103,7 +103,7 @@ objc_implementation vars defs
         ; (bridgeResTy,  cBridgeResTy,  hsResMarshaller,  cResMarshaller)  <- generateHaskellToCMarshaller resTy cResTy
 
             -- Haskell type of the foreign wrapper function
-        ; let hsWrapperTy = haskellWrapperType bridgeArgTys bridgeResTy
+        ; let hsWrapperTy = haskellWrapperType tvs bridgeArgTys bridgeResTy
 
             -- Generate the Haskell wrapper
         ; let cwrapperName = mkName . nameBase $ var
@@ -136,14 +136,18 @@ objc_implementation vars defs
             wrapperDef
         }
 
-    splitHaskellType (ArrowT `AppT` arg `AppT` res)
-      = let (args, inIO, res') = splitHaskellType res
+    splitHaskellType (ForallT tvs _ctxt ty)                   -- collect quantified variables (drop the context)
+      = let (tvs', args, inIO, res) = splitHaskellType ty
         in
-        (arg:args, inIO, res')
-    splitHaskellType (ConT io `AppT` res) | io == ''IO
-      = ([], True, res)
+        (tvs ++ tvs', args, inIO, res)
+    splitHaskellType (ArrowT `AppT` arg `AppT` res)           -- collect argument types
+      = let (tvs, args, inIO, res') = splitHaskellType res
+        in
+        (tvs, arg:args, inIO, res')
+    splitHaskellType (ConT io `AppT` res) | io == ''IO        -- is it an 'IO' function?
+      = ([], [], True, res)
     splitHaskellType res
-      = ([], False, res)
+      = ([], [], False, res)
 
 forExpD :: Callconv -> String -> Name -> TypeQ -> DecQ
 forExpD cc str n ty
@@ -176,7 +180,7 @@ objc vars resTy e
         generateCToHaskellMarshaller (ConT resTy) cResTy
 
         -- Haskell type of the foreign wrapper function
-    ; let hsWrapperTy = haskellWrapperType bridgeArgTys bridgeResTy
+    ; let hsWrapperTy = haskellWrapperType [] bridgeArgTys bridgeResTy
 
         -- FFI setup for the C wrapper
     ; cwrapperName <- newName "cwrapper"
@@ -208,11 +212,15 @@ objc vars resTy e
 
 -- Turn a list of argument types and a result type into a Haskell wrapper signature.
 --
--- > haskellWrapperType [a1, .., an] r = [| a1 -> .. -> an -> IO r |]
+-- > haskellWrapperType [tv1, .., tvm] [a1, .., an] r = [| forall tv1 .. tvm. a1 -> .. -> an -> IO r |]
 --
-haskellWrapperType :: [TH.TypeQ] -> TH.TypeQ -> TH.TypeQ
-haskellWrapperType []             resTy = [t| IO $resTy |]
-haskellWrapperType (argTy:argTys) resTy = [t| $argTy -> $(haskellWrapperType argTys resTy) |]
+haskellWrapperType :: [TH.TyVarBndr] -> [TH.TypeQ] -> TH.TypeQ -> TH.TypeQ
+haskellWrapperType []  argTys resTy = wrapperBodyType argTys resTy                          -- monotype
+haskellWrapperType tvs argTys resTy = forallT tvs (cxt []) (wrapperBodyType argTys resTy)   -- polytype
+
+wrapperBodyType :: [TH.TypeQ] -> TH.TypeQ -> TH.TypeQ
+wrapperBodyType []             resTy = [t| IO $resTy |]
+wrapperBodyType (argTy:argTys) resTy = [t| $argTy -> $(wrapperBodyType argTys resTy) |]
 
 -- Generate the prototype of and function definition of a C marshalling wrapper.
 --

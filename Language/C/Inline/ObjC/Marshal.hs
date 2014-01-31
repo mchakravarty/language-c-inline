@@ -31,6 +31,7 @@ module Language.C.Inline.ObjC.Marshal (
 import Foreign.C                  as C
 import Foreign.C.String           as C
 import Foreign.Marshal            as C
+import Foreign.Ptr                as C
 import Foreign.StablePtr          as C
 import Language.Haskell.TH        as TH
 import Language.Haskell.TH.Syntax as TH
@@ -47,7 +48,7 @@ import Language.C.Inline.Error
 -- Auxilliary functions
 -- --------------------
 
--- Check that the given TH name is that of a Haskell variable and determine its type.
+-- |Check that the given TH name is that of a Haskell variable and determine its type.
 --
 determineVarType :: TH.Name -> Q TH.Type
 determineVarType vname
@@ -63,7 +64,7 @@ determineVarType vname
           }
     }
 
--- Check that the given TH name is that of a Haskell type constructor.
+-- |Check that the given TH name is that of a Haskell type constructor.
 --
 checkTypeName :: TH.Name -> Q ()
 checkTypeName tyname
@@ -85,46 +86,77 @@ checkTypeName tyname
 -- Determine foreign types
 -- -----------------------
 
--- Determine the C type that we map a given Haskell type to.
+-- |Determine the C type that we map a given Haskell type to.
 --
 haskellTypeToCType :: QC.Extensions -> TH.Type -> Q QC.Type
-haskellTypeToCType lang (ListT `AppT` (ConT char))
-  | char == ''Char 
-  = haskellTypeNameToCType lang ''String
-haskellTypeToCType lang (ConT tc)
-  = haskellTypeNameToCType lang tc
-haskellTypeToCType _lang ty
-  = return [cty| typename HsStablePtr |]
+haskellTypeToCType lang ty
+  = case haskellTypeToCType' lang ty of
+      Nothing  -> reportErrorAndFail lang $ "don't know a foreign type suitable for Haskell type '" ++ TH.pprint ty ++ "'"
+      Just cty -> return cty
 
--- Determine the C type that we map a given Haskell type constructor to — i.e., we map all Haskell
+haskellTypeToCType' :: QC.Extensions -> TH.Type -> Maybe QC.Type
+haskellTypeToCType' lang (ForallT _tvs _ctxt ty)           -- ignore quantifiers and contexts
+  = haskellTypeToCType' lang ty
+haskellTypeToCType' lang (ListT `AppT` (ConT char))        -- marshal '[Char]' as 'String'
+  | char == ''Char 
+  = haskellTypeNameToCType' lang ''String
+haskellTypeToCType' lang (ConT maybeC `AppT` argTy)        -- encode a 'Maybe' around a pointer type in the pointer
+  | maybeC == ''Maybe && maybe False isCPtrType cargTy
+  = cargTy
+  where
+    cargTy = haskellTypeToCType' lang argTy
+haskellTypeToCType' lang (ConT tc)                         -- nullary type constructors are delegated
+  = haskellTypeNameToCType' lang tc
+haskellTypeToCType' lang ty@(VarT tv)                      -- can't marshal an unknown type
+  = Nothing
+haskellTypeToCType' _lang ty                               -- everything else is marshalled as a stable pointer
+  = Just [cty| typename HsStablePtr |]
+
+-- |Determine the C type that we map a given Haskell type constructor to — i.e., we map all Haskell
 -- whose outermost constructor is the given type constructor to the returned C type..
 --
 haskellTypeNameToCType :: QC.Extensions -> TH.Name -> Q QC.Type
-haskellTypeNameToCType ObjC tyname
-  | tyname == ''String = return [cty| typename NSString * |]
-  | tyname == ''()     = return [cty| void |]
-haskellTypeNameToCType _lang tyname
-  = return [cty| typename HsStablePtr |]
+haskellTypeNameToCType ext tyname
+  = case haskellTypeNameToCType' ext tyname of
+      Nothing  -> reportErrorAndFail ObjC $ "don't know a foreign type suitable for Haskell type '" ++ show tyname ++ "'"
+      Just cty -> return cty
+
+haskellTypeNameToCType' :: QC.Extensions -> TH.Name -> Maybe QC.Type
+haskellTypeNameToCType' ObjC tyname
+  | tyname == ''String = Just [cty| typename NSString * |]       -- 'String' -> '(NSString *)'
+  | tyname == ''()     = Just [cty| void |]                      -- '()' -> 'void'
+haskellTypeNameToCType' _lang tyname                             -- <everything else> -> 'HsStablePtr'
+  = Just [cty| typename HsStablePtr |]
+
+-- Check whether the given C type is an overt pointer.
+--
+isCPtrType :: QC.Type -> Bool
+isCPtrType (Type _ (Ptr {}) _)           = True
+isCPtrType (Type _ (BlockPtr {}) _)      = True
+isCPtrType (Type _ (Array {}) _)         = True
+isCPtrType ty
+  | ty == [cty| typename HsStablePtr |]  = True
+  | otherwise                            = False
 
 
 -- Determine marshallers and their bridging types
 -- ----------------------------------------------
 
--- Constructs Haskell code to marshal a value (used to marshal arguments and results).
+-- |Constructs Haskell code to marshal a value (used to marshal arguments and results).
 --
 -- * The first argument is the code referring to the value to be marshalled.
 -- * The second argument is the continuation that gets the marshalled value as an argument.
 --
 type HaskellMarshaller = TH.ExpQ -> TH.ExpQ -> TH.ExpQ
 
--- Constructs C code to marshal an argument (used to marshal arguments and results).
+-- |Constructs C code to marshal an argument (used to marshal arguments and results).
 --
 -- * The argument is the identifier of the value to be marshalled.
 -- * The result of the generated expression is the marshalled value.
 --
 type CMarshaller = TH.Name -> QC.Exp
 
--- Generate the type-specific marshalling code for Haskell to C land marshalling for a Haskell-C type pair.
+-- |Generate the type-specific marshalling code for Haskell to C land marshalling for a Haskell-C type pair.
 --
 -- The result has the following components:
 --
@@ -134,6 +166,31 @@ type CMarshaller = TH.Name -> QC.Exp
 -- * Generator for the C-side marshalling code.
 --
 generateHaskellToCMarshaller :: TH.Type -> QC.Type -> Q (TH.TypeQ, QC.Type, HaskellMarshaller, CMarshaller)
+generateHaskellToCMarshaller hsTy@(ConT maybe `AppT` argTy) cTy
+  | maybe == ''Maybe && isCPtrType cTy
+  = do 
+    { (argTy', cTy', hsMarsh, cMarsh) <- generateHaskellToCMarshaller argTy cTy
+    ; ty <- argTy'
+    ; case ty of
+        ConT ptr `AppT` _ 
+          | ptr == ''C.Ptr       -> return ( argTy'
+                                           , cTy'
+                                           , \val cont -> [| case $val of
+                                                               Nothing   -> $cont C.nullPtr
+                                                               Just val' -> $(hsMarsh [|val'|] cont) |] 
+                                           , cMarsh
+                                           )
+          | ptr == ''C.StablePtr -> return ( argTy'
+                                           , cTy'
+                                           , \val cont -> [| case $val of
+                                                               Nothing   -> $cont (C.castPtrToStablePtr C.nullPtr)
+                                                               Just val' -> $(hsMarsh [|val'|] cont) |]
+                                                               -- NB: the above cast works for GHC, but is in the grey area
+                                                               --     of the FFI spec
+                                           , cMarsh
+                                           )
+        _ -> reportErrorAndFail ObjC $ "missing 'Maybe' marshalling for '" ++ prettyQC cTy ++ "' to '" ++ TH.pprint hsTy ++ "'"
+    }
 generateHaskellToCMarshaller hsTy cTy
   | cTy == [cty| typename NSString * |] 
   = return ( [t| C.CString |]
@@ -150,7 +207,7 @@ generateHaskellToCMarshaller hsTy cTy
   | otherwise
   = reportErrorAndFail ObjC $ "cannot marshal '" ++ TH.pprint hsTy ++ "' to '" ++ prettyQC cTy ++ "'"
 
--- Generate the type-specific marshalling code for Haskell to C land marshalling for a C-Haskell type pair.
+-- |Generate the type-specific marshalling code for Haskell to C land marshalling for a C-Haskell type pair.
 --
 -- The result has the following components:
 --
