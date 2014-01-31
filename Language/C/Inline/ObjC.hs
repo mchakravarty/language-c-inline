@@ -133,7 +133,7 @@ objc_implementation vars defs
               $ty:cBridgeResTy $id:(show hswrapperName) ($params:(cParams cBridgeArgTys cArgVars));
             |]
             ++
-            wrapperDef
+            map makeStaticFunc wrapperDef
         }
 
     splitHaskellType (ForallT tvs _ctxt ty)                   -- collect quantified variables (drop the context)
@@ -148,6 +148,16 @@ objc_implementation vars defs
       = ([], [], True, res)
     splitHaskellType res
       = ([], [], False, res)
+    
+    makeStaticFunc (FuncDef (Func    dspec f decl ps    body loc1) loc2)
+      = FuncDef (Func    (addStatic dspec) f decl ps    body loc1) loc2
+    makeStaticFunc (FuncDef (OldFunc dspec f decl ps ig body loc1) loc2)
+      = FuncDef (OldFunc (addStatic dspec) f decl ps ig body loc1) loc2
+    makeStaticFunc def = def
+    
+    addStatic (DeclSpec         st tqs ts loc) = DeclSpec         (Tstatic loc:st) tqs ts loc
+    addStatic (AntiTypeDeclSpec st tqs ts loc) = AntiTypeDeclSpec (Tstatic loc:st) tqs ts loc
+    addStatic declSpec                         = declSpec
 
 forExpD :: Callconv -> String -> Name -> TypeQ -> DecQ
 forExpD cc str n ty
