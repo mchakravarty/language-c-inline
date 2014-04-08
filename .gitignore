@@ -49,3 +49,15 @@ tests/objc/minimal/Main_objc.h
 tests/objc/minimal/Main_objc.m
 
 tests/objc/minimal/Minimal
+
+tests/objc/record/Main_objc.h
+
+tests/objc/record/Main_objc.m
+
+tests/objc/record/Particle
+
+tests/objc/record/Particle_objc.h
+
+tests/objc/record/Particle_objc.m
+
+tests/objc/record/Particle_stub.h

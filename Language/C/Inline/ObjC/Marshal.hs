@@ -123,6 +123,7 @@ haskellTypeNameToCType ext tyname
 
 haskellTypeNameToCType' :: QC.Extensions -> TH.Name -> Maybe QC.Type
 haskellTypeNameToCType' ObjC tyname
+  | tyname == ''Float  = Just [cty| float |]                     -- 'Float' -> 'float'
   | tyname == ''String = Just [cty| typename NSString * |]       -- 'String' -> '(NSString *)'
   | tyname == ''()     = Just [cty| void |]                      -- '()' -> 'void'
 haskellTypeNameToCType' _lang tyname                             -- <everything else> -> 'HsStablePtr'
@@ -192,6 +193,12 @@ generateHaskellToCMarshaller hsTy@(ConT maybe `AppT` argTy) cTy
         _ -> reportErrorAndFail ObjC $ "missing 'Maybe' marshalling for '" ++ prettyQC cTy ++ "' to '" ++ TH.pprint hsTy ++ "'"
     }
 generateHaskellToCMarshaller hsTy cTy
+  | cTy == [cty| float |] 
+  = return ( [t| C.CFloat |]
+           , cTy
+           , \val cont -> [| $cont (realToFrac $val) |]
+           , \argName -> [cexp| $id:(show argName) |]
+           )
   | cTy == [cty| typename NSString * |] 
   = return ( [t| C.CString |]
            , [cty| char * |]
@@ -218,6 +225,12 @@ generateHaskellToCMarshaller hsTy cTy
 --
 generateCToHaskellMarshaller :: TH.Type -> QC.Type -> Q (TH.TypeQ, QC.Type, HaskellMarshaller, CMarshaller)
 generateCToHaskellMarshaller hsTy cTy
+  | cTy == [cty| float |] 
+  = return ( [t| C.CFloat |]
+           , cTy
+           , \val cont -> [| $cont (realToFrac $val) |]
+           , \argName -> [cexp| $id:(show argName) |]
+           )
   | cTy == [cty| typename NSString * |]
   = return ( [t| C.CString |]
            , [cty| char * |]

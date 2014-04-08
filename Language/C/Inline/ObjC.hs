@@ -12,6 +12,11 @@
 -- This module exports the principal API for inline Objective-C.
 
 module Language.C.Inline.ObjC (
+
+  -- * Re-export types from 'Foreign.C'
+  module Foreign.C.Types, CString, CStringLen, CWString, CWStringLen, Errno,
+
+  -- * Combinators for inline Objective-C 
   objc_import, objc_interface, objc_implementation, objc, objc_emit
 ) where
 
@@ -24,6 +29,7 @@ import Data.IORef
 import Data.List
 import Foreign.C                  as C
 import Foreign.C.String           as C
+import Foreign.C.Types
 import Foreign.Marshal            as C
 import Language.Haskell.TH        as TH
 import Language.Haskell.TH.Syntax as TH

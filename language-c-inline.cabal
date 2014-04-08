@@ -1,5 +1,5 @@
 Name:                   language-c-inline
-Version:                0.4.0.0
+Version:                0.5.0.0
 Cabal-version:          >= 1.9.2
 Tested-with:            GHC == 7.6.3
 Build-type:             Simple
@@ -15,6 +15,8 @@ Description:            This library provides inline C & Objective-C code using 
                         For more information, see <https://github.com/mchakravarty/language-c-inline/wiki>.
                         .
                         Known bugs: <https://github.com/mchakravarty/language-c-inline/issues>
+                        .
+                        * New in 0.5.0.0: Marshalling of numeric types and of records
                         .
                         * New in 0.4.0.0: Maybe types are marshalled as pointers that may be nil & bug fixes.
                         .
@@ -37,7 +39,6 @@ Category:               Language, Foreign
 Stability:              Experimental
 
 Extra-source-files:     README.md
-                        tests/objc/concept/Makefile
                         tests/objc/app/App.hs
                         tests/objc/app/AppDelegate.hs
                         tests/objc/app/Interpreter.hs
@@ -49,8 +50,12 @@ Extra-source-files:     README.md
                         tests/objc/app/HSApp.app/Contents/Resources/en.lproj/Credits.rtf
                         tests/objc/app/HSApp.app/Contents/Resources/en.lproj/InfoPlist.strings
                         tests/objc/app/HSApp.app/Contents/Resources/en.lproj/MainMenu.nib
+                        tests/objc/concept/Makefile
                         tests/objc/minimal/Makefile
                         tests/objc/minimal/Main.hs
+                        tests/objc/record/Makefile
+                        tests/objc/record/Main.hs
+                        tests/objc/record/Particle.hs
 
 Source-repository head
   Type:                 git
