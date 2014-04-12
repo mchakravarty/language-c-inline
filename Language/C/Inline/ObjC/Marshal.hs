@@ -1,4 +1,4 @@
-{-# LANGUAGE TemplateHaskell, QuasiQuotes #-}
+{-# LANGUAGE PatternGuards, TemplateHaskell, QuasiQuotes #-}
 
 -- |
 -- Module      : Language.C.Inline.ObjC.Marshal
@@ -28,6 +28,8 @@ module Language.C.Inline.ObjC.Marshal (
 ) where
 
   -- common libraries
+import Data.Map                   as Map
+import Data.Word
 import Foreign.C                  as C
 import Foreign.C.String           as C
 import Foreign.Marshal            as C
@@ -89,45 +91,79 @@ checkTypeName tyname
 -- |Determine the C type that we map a given Haskell type to.
 --
 haskellTypeToCType :: QC.Extensions -> TH.Type -> Q QC.Type
-haskellTypeToCType lang ty
-  = case haskellTypeToCType' lang ty of
-      Nothing  -> reportErrorAndFail lang $ "don't know a foreign type suitable for Haskell type '" ++ TH.pprint ty ++ "'"
-      Just cty -> return cty
-
-haskellTypeToCType' :: QC.Extensions -> TH.Type -> Maybe QC.Type
-haskellTypeToCType' lang (ForallT _tvs _ctxt ty)           -- ignore quantifiers and contexts
-  = haskellTypeToCType' lang ty
-haskellTypeToCType' lang (ListT `AppT` (ConT char))        -- marshal '[Char]' as 'String'
+haskellTypeToCType lang (ForallT _tvs _ctxt ty)           -- ignore quantifiers and contexts
+  = haskellTypeToCType lang ty
+haskellTypeToCType lang (ListT `AppT` (ConT char))        -- marshal '[Char]' as 'String'
   | char == ''Char 
-  = haskellTypeNameToCType' lang ''String
-haskellTypeToCType' lang (ConT maybeC `AppT` argTy)        -- encode a 'Maybe' around a pointer type in the pointer
-  | maybeC == ''Maybe && maybe False isCPtrType cargTy
-  = cargTy
-  where
-    cargTy = haskellTypeToCType' lang argTy
-haskellTypeToCType' lang (ConT tc)                         -- nullary type constructors are delegated
-  = haskellTypeNameToCType' lang tc
-haskellTypeToCType' lang ty@(VarT tv)                      -- can't marshal an unknown type
-  = Nothing
-haskellTypeToCType' _lang ty                               -- everything else is marshalled as a stable pointer
-  = Just [cty| typename HsStablePtr |]
+  = haskellTypeNameToCType lang ''String
+haskellTypeToCType lang ty@(ConT maybeC `AppT` argTy)     -- encode a 'Maybe' around a pointer type in the pointer
+  | maybeC == ''Maybe
+  = do
+    { cargTy <- haskellTypeToCType lang argTy
+    ; if isCPtrType cargTy
+      then
+        return cargTy
+      else
+        unknownType lang ty
+    }
+haskellTypeToCType lang (ConT tc)                         -- nullary type constructors are delegated
+  = haskellTypeNameToCType lang tc
+haskellTypeToCType lang ty@(VarT tv)                      -- can't marshal an unknown type
+  = unknownType lang ty
+haskellTypeToCType lang ty@(UnboxedTupleT _)              -- there is nothing like unboxed tuples in C
+  = unknownType lang ty
+haskellTypeToCType _lang ty                               -- everything else is marshalled as a stable pointer
+  = return [cty| typename HsStablePtr |]
 
--- |Determine the C type that we map a given Haskell type constructor to — i.e., we map all Haskell
--- whose outermost constructor is the given type constructor to the returned C type..
+unknownType lang ty = reportErrorAndFail lang $ "don't know a foreign type suitable for Haskell type '" ++ TH.pprint ty ++ "'"
+
+-- |Determine the C type that we map a given Haskell type constructor to — i.e., we map all Haskell types
+-- whose outermost constructor is the given type constructor to the returned C type.
+--
+-- All types representing boxed values that are not explicitly mapped to a specific C type, are mapped to
+-- stable pointers.
 --
 haskellTypeNameToCType :: QC.Extensions -> TH.Name -> Q QC.Type
 haskellTypeNameToCType ext tyname
-  = case haskellTypeNameToCType' ext tyname of
-      Nothing  -> reportErrorAndFail ObjC $ "don't know a foreign type suitable for Haskell type '" ++ show tyname ++ "'"
+  = case Map.lookup tyname (haskellToCTypeMap ext) of
       Just cty -> return cty
+      Nothing  -> do
+        { info <- reify tyname
+        ; case info of
+            PrimTyConI _ _ True -> unknownUnboxedType
+            _                   -> return [cty| typename HsStablePtr |]
+        }
+  where
+    unknownUnboxedType = reportErrorAndFail ext $ 
+                           "don't know a foreign type suitable for the unboxed Haskell type '" ++ show tyname ++ "'"  
 
-haskellTypeNameToCType' :: QC.Extensions -> TH.Name -> Maybe QC.Type
-haskellTypeNameToCType' ObjC tyname
-  | tyname == ''Float  = Just [cty| float |]                     -- 'Float' -> 'float'
-  | tyname == ''String = Just [cty| typename NSString * |]       -- 'String' -> '(NSString *)'
-  | tyname == ''()     = Just [cty| void |]                      -- '()' -> 'void'
-haskellTypeNameToCType' _lang tyname                             -- <everything else> -> 'HsStablePtr'
-  = Just [cty| typename HsStablePtr |]
+haskellToCTypeMap :: QC.Extensions -> Map TH.Name QC.Type
+haskellToCTypeMap ObjC
+  = Map.fromList
+    [ (''CChar,   [cty| char |])
+    , (''CSChar,  [cty| signed char |])
+    , (''CUChar,  [cty| unsigned char |])
+    , (''CShort,  [cty| short |])
+    , (''CUShort, [cty| unsigned short |])
+    , (''Int,     [cty| int |])
+    , (''CInt,    [cty| int |])
+    , (''Word,    [cty| unsigned int |])
+    , (''CUInt,   [cty| unsigned int |])
+    , (''CLong,   [cty| long |])
+    , (''CULong,  [cty| unsigned long |])
+    , (''CLLong,  [cty| long long |])
+    , (''CULLong, [cty| unsigned long long |])
+    --
+    , (''Float,   [cty| float |])
+    , (''CFloat,  [cty| float |])
+    , (''Double,  [cty| double |])
+    , (''CDouble, [cty| double |])
+    --
+    , (''String,  [cty| typename NSString * |])
+    , (''(),      [cty| void |])
+    ]
+haskellToCTypeMap _lang
+  = Map.empty
 
 -- Check whether the given C type is an overt pointer.
 --
@@ -193,8 +229,14 @@ generateHaskellToCMarshaller hsTy@(ConT maybe `AppT` argTy) cTy
         _ -> reportErrorAndFail ObjC $ "missing 'Maybe' marshalling for '" ++ prettyQC cTy ++ "' to '" ++ TH.pprint hsTy ++ "'"
     }
 generateHaskellToCMarshaller hsTy cTy
-  | cTy == [cty| float |] 
-  = return ( [t| C.CFloat |]
+  | Just hsMarshalTy <- Map.lookup cTy cIntegralMap    -- checking whether it is an integral type
+  = return ( hsMarshalTy
+           , cTy
+           , \val cont -> [| $cont (fromIntegral $val) |]
+           , \argName -> [cexp| $id:(show argName) |]
+           )
+  | Just hsMarshalTy <- Map.lookup cTy cFloatingMap    -- checking whether it is a floating type
+  = return ( hsMarshalTy
            , cTy
            , \val cont -> [| $cont (realToFrac $val) |]
            , \argName -> [cexp| $id:(show argName) |]
@@ -225,8 +267,14 @@ generateHaskellToCMarshaller hsTy cTy
 --
 generateCToHaskellMarshaller :: TH.Type -> QC.Type -> Q (TH.TypeQ, QC.Type, HaskellMarshaller, CMarshaller)
 generateCToHaskellMarshaller hsTy cTy
-  | cTy == [cty| float |] 
-  = return ( [t| C.CFloat |]
+  | Just hsMarshalTy <- Map.lookup cTy cIntegralMap    -- checking whether it is an integral type
+  = return ( hsMarshalTy
+           , cTy
+           , \val cont -> [| $cont (fromIntegral $val) |]
+           , \argName -> [cexp| $id:(show argName) |]
+           )
+  | Just hsMarshalTy <- Map.lookup cTy cFloatingMap    -- checking whether it is a floating type
+  = return ( hsMarshalTy
            , cTy
            , \val cont -> [| $cont (realToFrac $val) |]
            , \argName -> [cexp| $id:(show argName) |]
@@ -262,3 +310,21 @@ generateCToHaskellMarshaller hsTy cTy
   | otherwise
   = reportErrorAndFail ObjC $ "cannot marshall '" ++ prettyQC cTy ++ "' to '" ++ TH.pprint hsTy ++ "'"    
 
+cIntegralMap = Map.fromList
+               [ ([cty| char |],               [t| C.CChar |])
+               , ([cty| signed char |],        [t| C.CChar |])
+               , ([cty| unsigned char |],      [t| C.CUChar |])
+               , ([cty| short |],              [t| C.CShort |])
+               , ([cty| unsigned short |],     [t| C.CUShort |])
+               , ([cty| int |],                [t| C.CInt |])
+               , ([cty| unsigned int |],       [t| C.CUInt |])
+               , ([cty| long |],               [t| C.CLong |])
+               , ([cty| unsigned long |],      [t| C.CULong |])
+               , ([cty| long long |],          [t| C.CLLong |])
+               , ([cty| unsigned long long |], [t| C.CULLong |])
+               ]
+
+cFloatingMap = Map.fromList
+               [ ([cty| float |] , [t| C.CFloat |])
+               , ([cty| double |], [t| C.CDouble |])
+               ]

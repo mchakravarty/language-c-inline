@@ -64,6 +64,7 @@ Source-repository head
 Library
   Build-depends:        array,
                         base              >= 4.0 && < 5,
+                        containers        >= 0.4,
                         filepath          >= 1.2,
                         language-c-quote  >= 0.7,
                         mainland-pretty   >= 0.2.5,
