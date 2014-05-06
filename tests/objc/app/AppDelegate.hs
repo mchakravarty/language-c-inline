@@ -30,7 +30,7 @@ evalExpr session input@(':' : withCommand)
                          { result <- typeOf session expr
                          ; return $ formatResult input result
                          }
-      (command, _)    -> return $ "Haskell> " ++ input ++ "\nUnknown command" ++ command ++ "\n"
+      (command, _)    -> return $ "Haskell> " ++ input ++ "\nUnknown command '" ++ command ++ "'\n"
 evalExpr session expr
   = do 
     { result <- eval session expr

@@ -21,9 +21,7 @@ import Control.Applicative
 import Control.Concurrent
 import Control.Exception            (SomeException, evaluate)
 import Control.Monad
-import "MonadCatchIO-mtl" 
-       Control.Monad.CatchIO
-import Control.Monad.Error
+import Control.Monad.Catch
 
 import System.IO
 
@@ -80,9 +78,9 @@ eval (Session inlet) e
     ; putMVar inlet $ Just $       -- the interpreter command we send over to the interpreter thread
         do
           {                  -- demand the result to force any contained exceptions
-          ; result <- (do { !result <- Interp.eval e
-                          ; return result }
-                      `catchError` (return . pprError))
+          ; result <- do { !result <- Interp.eval e
+                         ; return result }
+                      `catch` (return . pprError)
                       `catch` (return . (show :: SomeException -> String))
           ; Interp.lift $ putMVar resultMV (Result result)
           }
@@ -100,9 +98,9 @@ typeOf (Session inlet) e
     ; putMVar inlet $ Just $       -- the interpreter command we send over to the interpreter thread
         do
           {                  -- demand the result to force any contained exceptions
-          ; result <- (do { !result <- Interp.typeOf e
-                          ; return result }
-                      `catchError` (return . pprError))
+          ; result <- do { !result <- Interp.typeOf e
+                         ; return result }
+                      `catch` (return . pprError)
                       `catch` (return . (show :: SomeException -> String))
           ; Interp.lift $ putMVar resultMV (Result result)
           }
@@ -120,11 +118,11 @@ load (Session inlet) mname
     ; putMVar inlet $ Just $       -- the interpreter command we send over to the interpreter thread
         do
           {                  -- demand the result to force any contained exceptions
-          ; result <- (do { Interp.loadModules [mname]
-                          ; mods <- Interp.getLoadedModules
-                          ; Interp.setTopLevelModules mods
-                          ; return ("Successfully loaded '" ++ mname ++ "'") }
-                      `catchError` (return . pprError))
+          ; result <- do { Interp.loadModules [mname]
+                         ; mods <- Interp.getLoadedModules
+                         ; Interp.setTopLevelModules mods
+                         ; return ("Successfully loaded '" ++ mname ++ "'") }
+                      `catch` (return . pprError)
                       `catch` (return . (show :: SomeException -> String))
           ; Interp.lift $ putMVar resultMV (Result result)
           }
@@ -133,6 +131,6 @@ load (Session inlet) mname
 
 pprError :: Interp.InterpreterError -> String
 pprError (Interp.UnknownError msg) = msg
-pprError (Interp.WontCompile errs) = "Compile time error: \n" ++ concatMap Interp.errMsg errs
+pprError (Interp.WontCompile errs) = "Compile time error: \n" ++ unlines (map Interp.errMsg errs)
 pprError (Interp.NotAllowed msg)   = "Permission denied: " ++ msg
 pprError (Interp.GhcException msg) = "Internal error: " ++ msg

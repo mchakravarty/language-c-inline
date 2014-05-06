@@ -16,7 +16,7 @@ Description:            This library provides inline C & Objective-C code using 
                         .
                         Known bugs: <https://github.com/mchakravarty/language-c-inline/issues>
                         .
-                        * New in 0.5.0.0: Marshalling of numeric types and of records
+                        * New in 0.5.0.0: Marshalling of numeric types
                         .
                         * New in 0.4.0.0: Maybe types are marshalled as pointers that may be nil & bug fixes.
                         .
