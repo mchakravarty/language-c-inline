@@ -61,6 +61,10 @@ Source-repository head
   Type:                 git
   Location:             git://github.com/mchakravarty/language-c-inline.git
 
+Flag ManualTests
+  Description:         Enables tests that require manual intervention.
+  Default:             False
+
 Library
   Build-depends:        array,
                         base              >= 4.0 && < 5,
@@ -80,6 +84,11 @@ Library
 
 -- Doesn't work!!! Use the Makefile in the tests/ instead. (How can we get cabal to compile & link the generated ObjC files?)
 Test-Suite concept
+  if flag(ManualTests)
+     Buildable:         True
+  else
+     Buildable:         False
+
   Build-depends:        base              >= 4.0 && < 5,
                         language-c-quote,
                         language-c-inline
