@@ -65,7 +65,7 @@ objc_interface [cunit|
 |]
 
 
-objc_implementation ['launchMsg, 'start, 'evalExpr, 'loadModule] [cunit|
+objc_implementation [Typed 'launchMsg, Typed 'start, Typed 'evalExpr, Typed 'loadModule] [cunit|
 
 @interface AppDelegate ()
 

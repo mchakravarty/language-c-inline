@@ -90,18 +90,19 @@ objc_interface defs
 -- the Haskell variable refers to a CAF, it will be a nullary function in C — after all, a thunk may still need to be
 -- evaluated.)
 --
-objc_implementation :: [TH.Name] -> [QC.Definition] -> Q [TH.Dec]
-objc_implementation vars defs
+objc_implementation :: [Annotated TH.Name] -> [QC.Definition] -> Q [TH.Dec]
+objc_implementation ann_vars defs
   = do
-    { mapM_ exportVar vars
+    { mapM_ exportVar ann_vars
     ; stashObjC_m defs
     ; return []
     }
   where
-    exportVar var
+    exportVar ann_var
       = do
         {   -- Determine the argument and result types of the exported Haskell function
-        ; (tvs, argTys, inIO, resTy) <- splitHaskellType <$> determineVarType var
+        ; let var = stripAnnotation ann_var
+        ; (tvs, argTys, inIO, resTy) <- splitHaskellType <$> haskellTypeOf ann_var
 
             -- Determine C types
         ; cArgTys <- mapM (haskellTypeToCType ObjC) argTys

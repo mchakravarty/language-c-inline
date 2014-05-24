@@ -1,5 +1,6 @@
 HC      = ghc
-CFLAGS  = -fobjc-arc -I$(shell $(HC) --print-libdir)/include
+LIBDIR  = $(shell $(HC) --print-libdir)
+CFLAGS  = -fobjc-arc -I$(LIBDIR)/include -I$(LIBDIR)/../../includes
 HCFLAGS =
 LDFLAGS = -package template-haskell -package language-c-quote -package language-c-inline -package hint \
           -framework Cocoa -optl-ObjC -threaded

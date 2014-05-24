@@ -14,9 +14,6 @@
 -- FIXME: Some of the code can go into a module for general marshalling, as only some of it is ObjC-specific.
 
 module Language.C.Inline.ObjC.Marshal (
-  -- * Auxilliary functions
-  determineVarType,
-  
   -- * Determine corresponding foreign types of Haskell types
   haskellTypeToCType,
   
@@ -46,26 +43,6 @@ import Text.PrettyPrint.Mainland  as QC
   -- friends
 import Language.C.Inline.Error
 
-
--- Auxilliary functions
--- --------------------
-
--- |Check that the given TH name is that of a Haskell variable and determine its type.
---
-determineVarType :: TH.Name -> Q TH.Type
-determineVarType vname
-  = do
-    { vinfo <- reify vname
-    ; case vinfo of
-        VarI _ ty _ _ -> return ty
-        nonVarInfo    -> 
-          do
-          { reportErrorAndFail QC.ObjC $ 
-              "expected '" ++ show vname ++ "' to be a variable name, but it is " ++ 
-              show (TH.ppr nonVarInfo)
-          }
-
-    }
 
 -- Determine foreign types
 -- -----------------------

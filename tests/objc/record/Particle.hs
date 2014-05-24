@@ -52,7 +52,7 @@ objc_interface [cunit|
 |]
 
 
-objc_implementation ['newParticle, 'particleMass] [cunit|
+objc_implementation [Typed 'newParticle, Typed 'particleMass] [cunit|
 
 @interface Particle ()
 

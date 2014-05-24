@@ -6,7 +6,7 @@ import Language.C.Inline.ObjC
 objc_import ["<Foundation/Foundation.h>", "Particle_objc.h"]
 
 go :: IO ()
-go = $(objc [] ''() [cexp| ({ 
+go = $(objc [] $ void [cexp| ({ 
     typename Particle *particle = [Particle particleWithMass:1.0]; 
     NSLog(@"The mass is %f", particle.mass); 
   }) |])

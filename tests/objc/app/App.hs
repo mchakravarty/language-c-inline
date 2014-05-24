@@ -13,8 +13,8 @@ objc_import ["<Cocoa/Cocoa.h>"]
 
 
 main :: IO ()
-main = $(objc [] ''()
-          [cexp| NSApplicationMain (0, NULL) |])
-                   -- 'NSApplicationMain' ignores its argc and argv arguments anyway
+main = $(objc [] $
+          void [cexp| NSApplicationMain (0, NULL) |])
+                        -- 'NSApplicationMain' ignores its argc and argv arguments anyway
 
 objc_emit
