@@ -17,20 +17,23 @@ module Language.C.Inline.ObjC (
   module Foreign.C.Types, CString, CStringLen, CWString, CWStringLen, Errno,
 
   -- * Combinators for inline Objective-C 
-  objc_import, objc_interface, objc_implementation, objc, objc_emit
+  objc_import, objc_interface, objc_implementation, objc, objc_emit,
+  
+  -- * Marshalling annotations
+  Annotated(..), (<:), void
 ) where
 
   -- common libraries
 import Control.Applicative
-import Control.Monad
+import Control.Monad              hiding (void)
 import Data.Array
 import Data.Dynamic
 import Data.IORef
 import Data.List
-import Foreign.C                  as C
+import Foreign.C                  as C 
 import Foreign.C.String           as C
 import Foreign.C.Types
-import Foreign.Marshal            as C
+import Foreign.Marshal            as C  hiding (void)
 import Language.Haskell.TH        as TH
 import Language.Haskell.TH.Syntax as TH
 import System.FilePath
@@ -43,6 +46,7 @@ import Text.PrettyPrint.Mainland  as QC
 
   -- friends
 import Language.C.Inline.Error
+import Language.C.Inline.Hint
 import Language.C.Inline.State
 import Language.C.Inline.ObjC.Marshal
 
@@ -175,25 +179,26 @@ forExpD cc str n ty
 -- |Inline Objective-C expression.
 --
 -- The inline expression will be wrapped in a C function whose arguments are marshalled versions of the Haskell
--- variables given in the first argument and whose return value will be marshalled to the Haskell type given by the
--- second argument.
+-- variables given in the first argument. The marshalling of the variables and of the result is determined by the
+-- marshalling annotations at the variables and the inline expression.
 --
-objc :: [TH.Name] -> TH.Name -> QC.Exp -> Q TH.Exp
-objc vars resTy e
+objc :: [Annotated TH.Name] -> Annotated QC.Exp -> Q TH.Exp
+objc ann_vars ann_e
   = {- tryWithPlaceholder $ -} do  -- FIXME: catching the 'fail' purges all reported errors :(
     {   -- Sanity check of arguments
-    ; varTys <- mapM determineVarType vars
-    ; checkTypeName resTy
+    ; let vars = map stripAnnotation ann_vars
+    ; varTys <- mapM haskellTypeOf ann_vars
+    ; resTy  <- haskellTypeOf ann_e
 
         -- Determine C types
     ; cArgTys <- mapM (haskellTypeToCType ObjC) varTys
-    ; cResTy  <- haskellTypeNameToCType ObjC resTy
+    ; cResTy  <- haskellTypeToCType ObjC resTy
 
         -- Determine the bridging type and the marshalling code
     ; (bridgeArgTys, cBridgeArgTys, hsArgMarshallers, cArgMarshallers) <-
         unzip4 <$> zipWithM generateHaskellToCMarshaller varTys cArgTys
     ; (bridgeResTy,  cBridgeResTy,  hsResMarshaller,  cResMarshaller)  <-
-        generateCToHaskellMarshaller (ConT resTy) cResTy
+        generateCToHaskellMarshaller resTy cResTy
 
         -- Haskell type of the foreign wrapper function
     ; let hsWrapperTy = haskellWrapperType [] bridgeArgTys bridgeResTy
@@ -209,8 +214,8 @@ objc vars resTy e
     ; cArgVars <- mapM (newName . nameBase) vars
     ; let (wrapperProto, wrapperDef)
             = generateCWrapper cwrapperName cArgTys vars cArgMarshallers cBridgeArgTys cArgVars
-                               e
-                               (ConT resTy) cResTy cResMarshaller cBridgeResTy
+                               (stripAnnotation ann_e)
+                               resTy cResTy cResMarshaller cBridgeResTy
     ; stashObjC_h wrapperProto
     ; stashObjC_m wrapperDef
 

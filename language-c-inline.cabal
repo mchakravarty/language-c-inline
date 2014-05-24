@@ -1,7 +1,7 @@
 Name:                   language-c-inline
-Version:                0.5.0.0
+Version:                0.6.0.0
 Cabal-version:          >= 1.9.2
-Tested-with:            GHC == 7.6.3
+Tested-with:            GHC == 7.6.3, GHC == 7.8.2
 Build-type:             Simple
 
 Synopsis:               Inline C & Objective-C code in Haskell for language interoperability
@@ -10,11 +10,14 @@ Description:            This library provides inline C & Objective-C code using 
                         without a dedicated bridge or binding. Here is a tiny example:
                         .
                         > nslog :: String -> IO ()
-                        > nslog msg = $(objc ['msg] ''() [cexp| NSLog(@"Here is a message from Haskell: %@", msg) |])
+                        > nslog msg = $(objc ['msg :> ''String] (void [cexp| NSLog(@"Here is a message from Haskell: %@", msg) |]))
                         .
                         For more information, see <https://github.com/mchakravarty/language-c-inline/wiki>.
                         .
                         Known bugs: <https://github.com/mchakravarty/language-c-inline/issues>
+                        .
+                        * New in 0.6.0.0: Introduction of explicit marshalling hints (for more flexibility and support of
+                        GHC 7.8's untyped Template Haskell quotations)
                         .
                         * New in 0.5.0.0: Marshalling of numeric types
                         .
@@ -77,6 +80,7 @@ Library
   Exposed-modules:      Language.C.Inline.ObjC
 
   Other-modules:        Language.C.Inline.Error
+                        Language.C.Inline.Hint
                         Language.C.Inline.State
                         Language.C.Inline.ObjC.Marshal
 

@@ -15,10 +15,10 @@
 
 module Language.C.Inline.ObjC.Marshal (
   -- * Auxilliary functions
-  determineVarType, checkTypeName,
+  determineVarType,
   
   -- * Determine corresponding foreign types of Haskell types
-  haskellTypeToCType, haskellTypeNameToCType,
+  haskellTypeToCType,
   
   -- * Marshaller types
   HaskellMarshaller, CMarshaller,
@@ -64,26 +64,8 @@ determineVarType vname
               "expected '" ++ show vname ++ "' to be a variable name, but it is " ++ 
               show (TH.ppr nonVarInfo)
           }
-    }
 
--- |Check that the given TH name is that of a Haskell type constructor.
---
-checkTypeName :: TH.Name -> Q ()
-checkTypeName tyname
-  = do
-    { tyinfo <- reify tyname
-    ; case tyinfo of
-        TyConI (DataD {})    -> return ()
-        TyConI (NewtypeD {}) -> return ()
-        TyConI (TySynD {})   -> return ()
-        nonTyInfo  -> 
-          do
-          { reportErrorAndFail QC.ObjC $ 
-              "expected '" ++ show tyname ++ "' to be a type name, but it is " ++ 
-              show (TH.ppr nonTyInfo)
-          }
     }
-
 
 -- Determine foreign types
 -- -----------------------

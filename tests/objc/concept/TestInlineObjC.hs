@@ -11,7 +11,7 @@ objc_import ["<Foundation/Foundation.h>"]
 dumpURL :: String -> IO ()
 dumpURL urlString
   = do
-    { urlData <- $(objc ['urlString] ''String [cexp| 
+    { urlData <- $(objc ['urlString :> ''String] $ ''String <: [cexp| 
                    [NSString stringWithContentsOfURL:[NSURL URLWithString:urlString]
                              encoding:NSUTF8StringEncoding 
                              error:NULL] 
