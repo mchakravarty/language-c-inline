@@ -61,3 +61,5 @@ tests/objc/record/Particle_objc.h
 tests/objc/record/Particle_objc.m
 
 tests/objc/record/Particle_stub.h
+
+*.orig
