@@ -17,16 +17,20 @@ module Language.C.Inline.ObjC (
   module Foreign.C.Types, CString, CStringLen, CWString, CWStringLen, Errno,
 
   -- * Combinators for inline Objective-C 
-  objc_import, objc_interface, objc_implementation, objc, objc_emit,
+  objc_import, objc_interface, objc_implementation, objc_record, objc, objc_emit,
   
   -- * Marshalling annotations
-  Annotated(..), (<:), void
+  Annotated(..), (<:), void,
+
+  -- * Property maps
+  PropertyAccess, (==>), (-->)
 ) where
 
   -- common libraries
 import Control.Applicative
 import Control.Monad              hiding (void)
 import Data.Array
+import Data.Char
 import Data.Dynamic
 import Data.IORef
 import Data.List
@@ -172,10 +176,175 @@ objc_implementation ann_vars defs
 
 forExpD :: Callconv -> String -> Name -> TypeQ -> DecQ
 forExpD cc str n ty
- = do
-   { ty' <- ty
-   ; return $ ForeignD (ExportF cc str n ty')
-   }
+  = do
+    { ty' <- ty
+    ; return $ ForeignD (ExportF cc str n ty')
+    }
+
+-- |Maps a quoted property to a quoted projection and a quoted update function in addition to the type of the projected
+-- value.
+--
+data PropertyAccess = QC.ObjCIfaceDecl :==> (TH.TypeQ, TH.ExpQ, TH.ExpQ)
+
+-- |Map a property to explicit projection and update functions.
+--
+(==>) = (:==>)
+
+-- |Map a property to a field label. This function assumes that the field name is typed and can be reified.
+--
+(-->) :: QC.ObjCIfaceDecl -> Name -> PropertyAccess
+prop --> fieldName = prop ==> (fieldTy, 
+                               [| $(varE fieldName) |], 
+                               [| \s v -> $(recUpdE [|s|] [do { vE <- [|v|]; return (fieldName, vE) }]) |])
+  where
+    fieldTy
+      = do
+        { info <- reify fieldName
+        ; case info of
+            VarI _ (ArrowT `AppT` _ `AppT` resTy) _ _ -> return resTy
+            nonVarInfo -> 
+              do
+              { reportErrorAndFail QC.ObjC $ 
+                  "expected '" ++ show fieldName ++ "' to be a typed record field name, but it is " ++ 
+                  show (TH.ppr nonVarInfo)
+              }
+        }
+
+-- |Specification of a bridge for a Haskell structure that can be queried and updated from Objective-C.
+--
+-- The first argument is the name of the Objective-C class that will be a proxy for the Haskell structure.
+-- The second argument the name of the Haskell type of the bridged Haskell structure.
+--
+-- The generated class is immutable. When a property is updated, a new instance is allocated. This closely
+-- mirrors the behaviour of the Haskell structure for which the class is a proxy.
+--
+-- The designated initialiser of the generated class is '[-initWith<HsName>HsPtr:(HsStablePtr)particleHsPtr]',
+-- where '<HsName>' is the type name of the Haskell structure. This initialiser is generated if it is not
+-- explicitly provided. The generated method '[-init]' calls the designated initialiser with 'nil' for the
+-- stable pointer.
+--
+-- WARNING: This is a very experimental feature and it will SURELY change in the future!!!
+--
+--FIXME: don't generate the designated initialiser if it is explicitly provided
+objc_record :: String                 -- ^class name
+            -> TH.Name                -- ^name of the Haskell type of the bridged Haskell structure
+            -> [Annotated TH.Name]    -- ^Haskell variables used in Objective-C code
+            -> [PropertyAccess]       -- ^Objective-C properties with corresponding Haskell projections and update functions
+            -> [QC.ObjCIfaceDecl]     -- ^extra interface declarations
+            -> [QC.Definition]        -- ^extra implementation declarations
+            -> Q [TH.Dec]
+objc_record objcClassName hsTyName ann_vars properties ifaceDecls impDecls
+  | null objcClassName
+  = reportErrorAndFail ObjC "empty class name"
+  | otherwise
+  = do
+    {   -- Turn projection and update functions into Haskell top-level function definitions
+    ; let (propTys, propProjFuns, propUpdFuns) = unzip3 [(ty, proj, upd) | (_ :==> (ty, proj, upd)) <- properties]
+    ; projNames <- sequence [ return . mkName $ "proj" ++ objcClassName ++ show i | (_, i) <- zip propProjFuns [1..]]
+    ; updNames  <- sequence [ return . mkName $ "upd"  ++ objcClassName ++ show i | (_, i) <- zip propProjFuns [1..]]
+    ; let projUpd_defs = [ funD name [clause [] (normalB propFun) []] 
+                         | (name, propFun) <- zip projNames propProjFuns ++ zip updNames propUpdFuns]
+
+        -- All new top-level functions are in the set of free variables for the implementation code
+    ; let all_ann_vars = ann_vars ++ zipWith addProjType projNames propTys ++ zipWith addUpdType updNames propTys
+
+        -- Construct the class interface
+    ; let propertyDecls     = [prop | (prop :==> _) <- properties]
+          updateMethodDecls = concatMap mkUpdateMethodDecl propertyDecls
+          iface             = [cunit| 
+            @interface $id:objcClassName : NSObject
+            
+            $ifdecls:propertyDecls
+            $ifdecls:updateMethodDecls
+            $ifdecls:ifaceDecls
+            
+            @end
+          |]
+
+        -- Construct the class implementation
+    ; let updateMethodDefs     = concat $ zipWith mkUpdateMethodDef     propertyDecls updNames
+          projectionMethodDefs = concat $ zipWith mkProjectionMethodDef propertyDecls projNames
+          imp                  = [cunit|
+            @interface $id:objcClassName ()
+            @property (readonly, assign, nonatomic) typename HsStablePtr $id:hsPtrName;
+            @end
+            
+            @implementation $id:objcClassName
+            
+            $edecls:updateMethodDefs
+            $edecls:impDecls
+            
+            - (instancetype)init
+            {
+              return [self $id:initWithHsPtrName:nil];
+            }
+            
+            - (instancetype)$id:initWithHsPtrName:(typename HsStablePtr)$id:hsPtrName
+            {
+              self = [super init];
+              if (self)
+                $id:("_" ++ hsPtrName) = $id:hsPtrName;
+              return self;
+            }
+
+            $edecls:projectionMethodDefs
+
+            @end
+          |]
+        
+        -- Inline the class interface and class implementation; then, return all new Haskell bindings
+    ; iface_defs <- objc_interface iface
+    ; imp_defs   <- objc_implementation all_ann_vars imp
+    ; fun_defs   <- sequence projUpd_defs
+    ; return $ iface_defs ++ imp_defs ++ fun_defs
+    }
+  where
+    addProjType name ty = name :> [t| $(conT hsTyName) -> $ty |]
+    addUpdType  name ty = name :> [t| $(conT hsTyName) -> $ty -> $(conT hsTyName) |]
+    
+    lowerClassName    = toLower (head objcClassName) : tail objcClassName
+    hsPtrName         = lowerClassName ++ "HsPtr"
+    initWithHsPtrName = "initWith" ++ objcClassName ++ "HsPtr"
+
+    mkUpdateMethodDecl propDecl@(ObjCIfaceProp _attrs 
+                                   (FieldGroup spec [Field (Just (Id propName _)) (Just decl) _exp _] loc)
+                                   _)
+      = [objcifdecls| 
+          + (instancetype)$id:lowerClassName:(typename $id:objcClassName *)$id:lowerClassName 
+                          $id:("With" ++ upperPropName):($ty:propTy)$id:propName; 
+        |]
+      where
+        upperPropName = toUpper (head propName) : tail propName
+        propTy        = QC.Type spec decl loc
+    
+    mkUpdateMethodDef propDecl@(ObjCIfaceProp _attrs 
+                                  (FieldGroup spec [Field (Just (Id propName _)) (Just decl) _exp _] loc)
+                                  _)
+                      updName
+      = [objcimdecls| 
+          + (instancetype)$id:lowerClassName:(typename $id:objcClassName *)$id:lowerClassName 
+                          $id:("With" ++ upperPropName):($ty:propTy)$id:propName
+          {
+            return [[$id:objcClassName alloc] $id:initWithHsPtrName:$id:(show updName)($id:lowerClassName.$id:hsPtrName,
+                                                                                       $id:propName)];
+          }
+        |]
+      where
+        upperPropName = toUpper (head propName) : tail propName
+        propTy        = QC.Type spec decl loc
+
+    mkProjectionMethodDef propDecl@(ObjCIfaceProp _attrs 
+                                      (FieldGroup spec [Field (Just (Id propName _)) (Just decl) _exp _] loc)
+                                      _)
+                          updName
+      = [objcimdecls| 
+          - ($ty:propTy)$id:propName
+          {
+            return $id:(show updName)(self.$id:hsPtrName);
+          }
+        |]
+      where
+        propTy = QC.Type spec decl loc
 
 -- |Inline Objective-C expression.
 --

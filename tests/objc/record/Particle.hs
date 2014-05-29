@@ -31,66 +31,23 @@ data Particle = Particle
 newParticle :: Float -> Particle
 newParticle mass = Particle mass origin zero zero
 
-particleMass :: Particle -> Float
-particleMass = mass
-
-
-objc_interface [cunit|
-
-@interface Particle : NSObject
-
-@property (readonly) float mass;
-
-+ (typename instancetype)particleWithMass:(float)mass;
-
-- (typename instancetype)init;
-
-- (typename instancetype)initWithMass:(float)mass;
-
-
-@end
-|]
-
-
-objc_implementation [Typed 'newParticle, Typed 'particleMass] [cunit|
-
-@interface Particle ()
-
-@property (readonly, assign, nonatomic) typename HsStablePtr particle;
-
-@end
-
-@implementation Particle
-
-// Initialisation
-
-+ (typename instancetype)particleWithMass:(float)mass
-{
-  return [[Particle alloc] initWithMass:mass];
-}
-
-- (typename instancetype)init
-{
-  return [self initWithMass:0.0];
-}
-
-- (typename instancetype)initWithMass:(float)mass
-{
-  self = [super init];
-  if (self)
-    _particle = newParticle(mass);
-  return self;
-}
-
-// Getters and setters
-
-- (float)mass
-{
-  return particleMass(self.particle);
-}
-
-@end
-|]
-
+objc_record "Particle" ''Particle [Typed 'newParticle]
+  [ [objcprop| @property (readonly) float mass; |] --> 'mass
+  , [objcprop| @property (readonly) float locX; |] ==> ([t| Float |], 
+                                                        [|  fst . loc |], 
+                                                        [|  \p locX -> p { loc = (locX, snd . loc $ p) } |])
+  , [objcprop| @property (readonly) float locY; |] ==> ([t| Float |], 
+                                                        [|  snd . loc |], 
+                                                        [|  \p locY -> p { loc = (fst . loc $ p, locY) } |])
+  ]
+  [objcifdecls|
+    + (instancetype)particleWithMass:(float)mass;
+  |] 
+  [objcimdecls|
+    + (instancetype)particleWithMass:(float)mass
+    {
+      return [[Particle alloc] initWithParticleHsPtr:newParticle(mass)];
+    }
+  |]
 
 objc_emit
