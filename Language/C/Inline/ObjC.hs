@@ -286,6 +286,11 @@ objc_record objcClassName hsTyName ann_vars properties ifaceDecls impDecls
                 $id:("_" ++ hsPtrName) = $id:hsPtrName;
               return self;
             }
+            
+            - (void)dealloc
+            {
+              hs_free_stable_ptr($id:("_" ++ hsPtrName));
+            }
 
             $edecls:projectionMethodDefs
 

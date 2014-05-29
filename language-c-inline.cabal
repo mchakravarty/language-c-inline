@@ -1,5 +1,5 @@
 Name:                   language-c-inline
-Version:                0.7.0.0
+Version:                0.7.1.0
 Cabal-version:          >= 1.9.2
 Tested-with:            GHC == 7.6.3, GHC == 7.8.2
 Build-type:             Simple
@@ -16,22 +16,22 @@ Description:            This library provides inline C & Objective-C code using 
                         .
                         Known bugs: <https://github.com/mchakravarty/language-c-inline/issues>
                         .
-                        * New in 0.7.0.0: Record marshalling
+                        * New in 0.7.0: Record marshalling
                         .
-                        * New in 0.6.0.0: Introduction of explicit marshalling hints (for more flexibility and support of
+                        * New in 0.6.0: Introduction of explicit marshalling hints (for more flexibility and support of
                         GHC 7.8's untyped Template Haskell quotations)
                         .
-                        * New in 0.5.0.0: Marshalling of numeric types
+                        * New in 0.5.0: Marshalling of numeric types
                         .
-                        * New in 0.4.0.0: Maybe types are marshalled as pointers that may be nil & bug fixes.
+                        * New in 0.4.0: Maybe types are marshalled as pointers that may be nil & bug fixes.
                         .
-                        * New in 0.3.0.0: Boxed Haskell types without a dedicated type mapping are marshalled using stable
+                        * New in 0.3.0: Boxed Haskell types without a dedicated type mapping are marshalled using stable
                         pointers.
                         .
-                        * New in 0.2.0.0: Support for multiple free variables in one inline expression as well
+                        * New in 0.2.0: Support for multiple free variables in one inline expression as well
                         as for inline code returning 'void'.
                         .
-                        * New in 0.1.0.0: We are just getting started! This is just a ROUGH AND
+                        * New in 0.1.0: We are just getting started! This is just a ROUGH AND
                         HIGHLY EXPERIMENTAL PROTOTYPE.
 License:                BSD3
 License-file:           LICENSE
