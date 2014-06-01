@@ -13,7 +13,7 @@
 
 module Language.C.Inline.Error (
   -- * Error reporting
-  reportErrorAndFail,
+  reportErrorWithLang, reportErrorAndFail,
 
   -- * Exception handling
   tryWithPlaceholder,
@@ -31,11 +31,23 @@ import Language.C.Quote.ObjC      as QC
 import Text.PrettyPrint.Mainland  as QC
 
 
+reportErrorWithLang :: QC.Extensions -> String -> Q ()
+reportErrorWithLang lang msg
+  = do
+    { loc <- location
+    -- FIXME: define a Show instance for 'Loc' and use it to prefix position to error
+    ; TH.reportError $ "Inline " ++ showLang lang ++ ": " ++ msg
+    }
+
 reportErrorAndFail :: QC.Extensions -> String -> Q a
 reportErrorAndFail lang msg
+  = reportErrorAndFail' $ "Inline " ++ showLang lang ++ ": " ++ msg
+
+reportErrorAndFail' :: String -> Q a
+reportErrorAndFail' msg
   = do
-    { reportError' lang msg
-    ; fail "Failure"
+    { TH.reportError msg
+    ; fail "Fatal error due to inline code"
     }
 
 -- reportErrorAndBail :: String -> Q TH.Exp
@@ -46,19 +58,12 @@ reportErrorAndFail lang msg
 --     ; return $ VarE undefinedName
 --     }
 
-reportError' :: QC.Extensions -> String -> Q ()
-reportError' lang msg
-  = do
-    { loc <- location
-    -- FIXME: define a Show instance for 'Loc' and use it to prefix position to error
-    ; TH.reportError $ "Inline " ++ showLang lang ++ ": " ++ msg
-    }
-  where
-    showLang QC.Antiquotation = "C"
-    showLang QC.Gcc           = "GCC C"
-    showLang QC.CUDA          = "CUDA C"
-    showLang QC.OpenCL        = "OpenCL"
-    showLang QC.ObjC          = "Objective-C"
+showLang :: QC.Extensions -> String
+showLang QC.Antiquotation = "C"
+showLang QC.Gcc           = "GCC C"
+showLang QC.CUDA          = "CUDA C"
+showLang QC.OpenCL        = "OpenCL"
+showLang QC.ObjC          = "Objective-C"
 
 -- If the tried computation fails, insert a placeholder expression.
 --

@@ -49,7 +49,7 @@ import Language.C.Inline.Error
 
 -- |Determine the C type that we map a given Haskell type to.
 --
-haskellTypeToCType :: QC.Extensions -> TH.Type -> Q QC.Type
+haskellTypeToCType :: QC.Extensions -> TH.Type -> Q (Maybe QC.Type)
 haskellTypeToCType lang (ForallT _tvs _ctxt ty)           -- ignore quantifiers and contexts
   = haskellTypeToCType lang ty
 haskellTypeToCType lang (ListT `AppT` (ConT char))        -- marshal '[Char]' as 'String'
@@ -59,7 +59,7 @@ haskellTypeToCType lang ty@(ConT maybeC `AppT` argTy)     -- encode a 'Maybe' ar
   | maybeC == ''Maybe
   = do
     { cargTy <- haskellTypeToCType lang argTy
-    ; if isCPtrType cargTy
+    ; if fmap isCPtrType cargTy == Just True
       then
         return cargTy
       else
@@ -72,9 +72,13 @@ haskellTypeToCType lang ty@(VarT tv)                      -- can't marshal an un
 haskellTypeToCType lang ty@(UnboxedTupleT _)              -- there is nothing like unboxed tuples in C
   = unknownType lang ty
 haskellTypeToCType _lang ty                               -- everything else is marshalled as a stable pointer
-  = return [cty| typename HsStablePtr |]
+  = return $ Just [cty| typename HsStablePtr |]
 
-unknownType lang ty = reportErrorAndFail lang $ "don't know a foreign type suitable for Haskell type '" ++ TH.pprint ty ++ "'"
+unknownType lang ty 
+  = do
+    { reportErrorWithLang lang $ "don't know a foreign type suitable for Haskell type '" ++ TH.pprint ty ++ "'"
+    ; return Nothing
+    }
 
 -- |Determine the C type that we map a given Haskell type constructor to — i.e., we map all Haskell types
 -- whose outermost constructor is the given type constructor to the returned C type.
@@ -82,19 +86,22 @@ unknownType lang ty = reportErrorAndFail lang $ "don't know a foreign type suita
 -- All types representing boxed values that are not explicitly mapped to a specific C type, are mapped to
 -- stable pointers.
 --
-haskellTypeNameToCType :: QC.Extensions -> TH.Name -> Q QC.Type
+haskellTypeNameToCType :: QC.Extensions -> TH.Name -> Q (Maybe QC.Type)
 haskellTypeNameToCType ext tyname
   = case Map.lookup tyname (haskellToCTypeMap ext) of
-      Just cty -> return cty
+      Just cty -> return $ Just cty
       Nothing  -> do
         { info <- reify tyname
         ; case info of
             PrimTyConI _ _ True -> unknownUnboxedType
-            _                   -> return [cty| typename HsStablePtr |]
+            _                   -> return $ Just [cty| typename HsStablePtr |]
         }
   where
-    unknownUnboxedType = reportErrorAndFail ext $ 
-                           "don't know a foreign type suitable for the unboxed Haskell type '" ++ show tyname ++ "'"  
+    unknownUnboxedType = do
+                         { reportErrorWithLang ext $ 
+                             "don't know a foreign type suitable for the unboxed Haskell type '" ++ show tyname ++ "'"  
+                         ; return Nothing
+                         }
 
 haskellToCTypeMap :: QC.Extensions -> Map TH.Name QC.Type
 haskellToCTypeMap ObjC

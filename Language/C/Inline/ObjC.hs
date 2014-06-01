@@ -34,6 +34,7 @@ import Data.Char
 import Data.Dynamic
 import Data.IORef
 import Data.List
+import Data.Maybe
 import Foreign.C                  as C 
 import Foreign.C.String           as C
 import Foreign.C.Types
@@ -109,10 +110,17 @@ objc_implementation ann_vars defs
         ; (tvs, argTys, inIO, resTy) <- splitHaskellType <$> haskellTypeOf ann_var
 
             -- Determine C types
-        ; cArgTys <- mapM (haskellTypeToCType ObjC) argTys
-        ; cResTy  <- haskellTypeToCType ObjC resTy
+        ; maybe_cArgTys <- mapM (haskellTypeToCType ObjC) argTys
+        ; maybe_cResTy  <- haskellTypeToCType ObjC resTy
+        ; let cannotMapAllTypes = Nothing `elem` (maybe_cResTy : maybe_cArgTys)
+              cArgTys           = map maybeErrorCtype maybe_cArgTys
+              cResTy            = maybeErrorCtype maybe_cResTy
+        
+        ; if cannotMapAllTypes 
+          then do {str <- annotatedShowQ ann_var; reportErrorWithLang ObjC $ "invalid marshalling: " ++ str}
+          else do
 
-            -- Determine the bridging type and the marshalling code
+        {   -- Determine the bridging type and the marshalling code
         ; (bridgeArgTys, cBridgeArgTys, hsArgMarshallers, cArgMarshallers) <-
             unzip4 <$> zipWithM generateCToHaskellMarshaller argTys cArgTys
         ; (bridgeResTy,  cBridgeResTy,  hsResMarshaller,  cResMarshaller)  <- generateHaskellToCMarshaller resTy cResTy
@@ -149,7 +157,7 @@ objc_implementation ann_vars defs
             |]
             ++
             map makeStaticFunc wrapperDef
-        }
+        } }
 
     splitHaskellType (ForallT tvs _ctxt ty)                   -- collect quantified variables (drop the context)
       = let (tvs', args, inIO, res) = splitHaskellType ty
@@ -173,6 +181,10 @@ objc_implementation ann_vars defs
     addStatic (DeclSpec         st tqs ts loc) = DeclSpec         (Tstatic loc:st) tqs ts loc
     addStatic (AntiTypeDeclSpec st tqs ts loc) = AntiTypeDeclSpec (Tstatic loc:st) tqs ts loc
     addStatic declSpec                         = declSpec
+
+maybeErrorCtype :: Maybe QC.Type -> QC.Type    
+maybeErrorCtype Nothing   = [cty| typename __UNDEFINED_TYPE |]    -- placeholder to make progress in the face of errors
+maybeErrorCtype (Just ty) = ty
 
 forExpD :: Callconv -> String -> Name -> TypeQ -> DecQ
 forExpD cc str n ty
@@ -366,10 +378,17 @@ objc ann_vars ann_e
     ; resTy  <- haskellTypeOf ann_e
 
         -- Determine C types
-    ; cArgTys <- mapM (haskellTypeToCType ObjC) varTys
-    ; cResTy  <- haskellTypeToCType ObjC resTy
-
-        -- Determine the bridging type and the marshalling code
+    ; maybe_cArgTys <- mapM (haskellTypeToCType ObjC) varTys
+    ; maybe_cResTy  <- haskellTypeToCType ObjC resTy
+    ; let cannotMapAllTypes = Nothing `elem` (maybe_cResTy : maybe_cArgTys)
+          cArgTys           = map maybeErrorCtype maybe_cArgTys
+          cResTy            = maybeErrorCtype maybe_cResTy
+    
+    ; if cannotMapAllTypes
+      then failOn [ann_var | (ann_var, Nothing) <- zip ann_vars maybe_cArgTys] maybe_cResTy
+      else do
+    
+    {   -- Determine the bridging type and the marshalling code
     ; (bridgeArgTys, cBridgeArgTys, hsArgMarshallers, cArgMarshallers) <-
         unzip4 <$> zipWithM generateHaskellToCMarshaller varTys cArgTys
     ; (bridgeResTy,  cBridgeResTy,  hsResMarshaller,  cResMarshaller)  <-
@@ -396,7 +415,7 @@ objc ann_vars ann_e
 
         -- Generate invocation of the C wrapper sandwiched into Haskell-side marshalling
     ; generateHSCall vars hsArgMarshallers (callThroughTable idx hsWrapperTy) hsResMarshaller True
-    }
+    } }
   where
     callThroughTable idx ty
       = do { jumptable <- getForeignTable
@@ -405,6 +424,19 @@ objc ann_vars ann_e
                  (error "InlineObjC: INTERNAL ERROR: type mismatch in jumptable")
                :: $ty |]
            }
+           
+    failOn err_ann_vars maybe_cResTy
+      = do
+        { unless (null err_ann_vars) $ do
+            { var_strs <- mapM annotatedShowQ err_ann_vars
+            ; reportErrorWithLang ObjC $ "invalid marshalling: " ++ intercalate ", " var_strs
+            }
+        ; unless (isJust maybe_cResTy) $ do
+            { ty <- haskellTypeOf ann_e
+            ; reportErrorWithLang ObjC $ "invalid marshalling for result type " ++ show ty
+            }
+        ; [| error "error in inline Objective-C expression" |]
+        }
 
 -- Turn a list of argument types and a result type into a Haskell wrapper signature.
 --

@@ -13,7 +13,7 @@
 
 module Language.C.Inline.Hint (
   -- * Annotations
-  Annotated(..), (<:), void,
+  Annotated(..), (<:), void, annotatedShowQ,
   
   -- * Hints
   Hint(..), 
@@ -23,6 +23,7 @@ module Language.C.Inline.Hint (
 ) where
 
   -- common libraries
+import Control.Applicative
 import Language.Haskell.TH        as TH
 import Language.Haskell.TH.Syntax as TH
 
@@ -49,16 +50,25 @@ data Annotated e where
 void :: e -> Annotated e
 void = (''() <:)
 
+-- |Pretty print an annotated entity.
+--
+annotatedShowQ :: Show e => Annotated e -> Q String
+annotatedShowQ (e :> hint)  = ((show e ++ " :> ") ++) <$> showQ hint
+annotatedShowQ (Typed name) = return $ "Typed " ++ show name
+
 -- Hints imply marshalling strategies, which include source and destination types for marshalling.
 --
 class Hint hint where
   haskellType :: hint -> Q TH.Type
+  showQ       :: hint -> Q String
   
 instance Hint Name where   -- must be a type name
   haskellType = conT
+  showQ       = return . show
       
 instance Hint (Q TH.Type) where
   haskellType = id
+  showQ       = (show <$>)
 
 -- |Determine the Haskell type implied for the given annotated entity.
 --
