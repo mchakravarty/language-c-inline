@@ -320,7 +320,10 @@ objc_record objcClassName hsTyName ann_vars properties ifaceDecls impDecls
     addUpdType  name ty = name :> [t| $(conT hsTyName) -> $ty -> $(conT hsTyName) |]
     
     lowerClassName    = toLower (head objcClassName) : tail objcClassName
-    hsPtrName         = lowerClassName ++ "HsPtr"
+    lowerHsTyName     = let hsTyNameBase = nameBase hsTyName
+                        in 
+                        toLower (head hsTyNameBase) : tail hsTyNameBase
+    hsPtrName         = lowerHsTyName ++ "HsPtr"
     initWithHsPtrName = "initWith" ++ objcClassName ++ "HsPtr"
 
     mkUpdateMethodDecl propDecl@(ObjCIfaceProp _attrs 
