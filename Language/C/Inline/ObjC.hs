@@ -238,14 +238,15 @@ prop --> fieldName = prop ==> (fieldTy,
 -- WARNING: This is a very experimental feature and it will SURELY change in the future!!!
 --
 --FIXME: don't generate the designated initialiser if it is explicitly provided
-objc_record :: String                 -- ^class name
+objc_record :: String                 -- ^prefix of the class name
+            -> String                 -- ^class name
             -> TH.Name                -- ^name of the Haskell type of the bridged Haskell structure
             -> [Annotated TH.Name]    -- ^Haskell variables used in Objective-C code
             -> [PropertyAccess]       -- ^Objective-C properties with corresponding Haskell projections and update functions
             -> [QC.ObjCIfaceDecl]     -- ^extra interface declarations
             -> [QC.Definition]        -- ^extra implementation declarations
             -> Q [TH.Dec]
-objc_record objcClassName hsTyName ann_vars properties ifaceDecls impDecls
+objc_record prefix objcClassName hsTyName ann_vars properties ifaceDecls impDecls
   | null objcClassName
   = reportErrorAndFail ObjC "empty class name"
   | otherwise
@@ -264,7 +265,7 @@ objc_record objcClassName hsTyName ann_vars properties ifaceDecls impDecls
     ; let propertyDecls     = [prop | (prop :==> _) <- properties]
           updateMethodDecls = concatMap mkUpdateMethodDecl propertyDecls
           iface             = [cunit| 
-            @interface $id:objcClassName : NSObject
+            @interface $id:prefixedClassName : NSObject
             
             $ifdecls:propertyDecls
             $ifdecls:updateMethodDecls
@@ -277,11 +278,11 @@ objc_record objcClassName hsTyName ann_vars properties ifaceDecls impDecls
     ; let updateMethodDefs     = concat $ zipWith mkUpdateMethodDef     propertyDecls updNames
           projectionMethodDefs = concat $ zipWith mkProjectionMethodDef propertyDecls projNames
           imp                  = [cunit|
-            @interface $id:objcClassName ()
+            @interface $id:prefixedClassName ()
             @property (readonly, assign, nonatomic) typename HsStablePtr $id:hsPtrName;
             @end
             
-            @implementation $id:objcClassName
+            @implementation $id:prefixedClassName
             
             $edecls:updateMethodDefs
             $edecls:impDecls
@@ -319,19 +320,19 @@ objc_record objcClassName hsTyName ann_vars properties ifaceDecls impDecls
     addProjType name ty = name :> [t| $(conT hsTyName) -> $ty |]
     addUpdType  name ty = name :> [t| $(conT hsTyName) -> $ty -> $(conT hsTyName) |]
     
+    prefixedClassName = prefix ++ objcClassName
     lowerClassName    = toLower (head objcClassName) : tail objcClassName
-    lowerHsTyName     = let hsTyNameBase = nameBase hsTyName
-                        in 
-                        toLower (head hsTyNameBase) : tail hsTyNameBase
+    hsTyNameBase      = nameBase hsTyName
+    lowerHsTyName     = toLower (head hsTyNameBase) : tail hsTyNameBase
     hsPtrName         = lowerHsTyName ++ "HsPtr"
-    initWithHsPtrName = "initWith" ++ objcClassName ++ "HsPtr"
+    initWithHsPtrName = "initWith" ++ hsTyNameBase ++ "HsPtr"
 
     mkUpdateMethodDecl propDecl@(ObjCIfaceProp _attrs 
                                    (FieldGroup spec [Field (Just (Id propName _)) (Just decl) _exp _] loc)
                                    _)
       = [objcifdecls| 
-          + (instancetype)$id:lowerClassName:(typename $id:objcClassName *)$id:lowerClassName 
-                          $id:("With" ++ upperPropName):($ty:propTy)$id:propName; 
+          + (instancetype)$id:lowerClassName:(typename $id:prefixedClassName *)$id:lowerClassName 
+                          $id:("with" ++ upperPropName):($ty:propTy)$id:propName; 
         |]
       where
         upperPropName = toUpper (head propName) : tail propName
@@ -342,10 +343,10 @@ objc_record objcClassName hsTyName ann_vars properties ifaceDecls impDecls
                                   _)
                       updName
       = [objcimdecls| 
-          + (instancetype)$id:lowerClassName:(typename $id:objcClassName *)$id:lowerClassName 
-                          $id:("With" ++ upperPropName):($ty:propTy)$id:propName
+          + (instancetype)$id:lowerClassName:(typename $id:prefixedClassName *)$id:lowerClassName 
+                          $id:("with" ++ upperPropName):($ty:propTy)$id:propName
           {
-            return [[$id:objcClassName alloc] $id:initWithHsPtrName:$id:(show updName)($id:lowerClassName.$id:hsPtrName,
+            return [[$id:prefixedClassName alloc] $id:initWithHsPtrName:$id:(show updName)($id:lowerClassName.$id:hsPtrName,
                                                                                        $id:propName)];
           }
         |]

@@ -31,7 +31,7 @@ data Particle = Particle
 newParticle :: Float -> Particle
 newParticle mass = Particle mass origin zero zero
 
-objc_record "Particle" ''Particle [Typed 'newParticle]
+objc_record "" "Particle" ''Particle [Typed 'newParticle]
   [ [objcprop| @property (readonly) float mass; |] --> 'mass
   , [objcprop| @property (readonly) float locX; |] ==> ([t| Float |], 
                                                         [|  fst . loc |], 
