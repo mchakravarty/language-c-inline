@@ -2,7 +2,6 @@
 
 import Control.Monad hiding (void)
 import Data.Typeable
-import Foreign.ForeignPtr
 import Language.C.Quote.ObjC
 import Language.C.Inline.ObjC
 

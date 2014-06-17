@@ -14,7 +14,7 @@
 module Language.C.Inline.ObjC (
 
   -- * Re-export types from 'Foreign.C'
-  module Foreign.C.Types, CString, CStringLen, CWString, CWStringLen, Errno, ForeignPtr,
+  module Foreign.C.Types, CString, CStringLen, CWString, CWStringLen, Errno, ForeignPtr, castForeignPtr,
 
   -- * Re-export types from Template Haskell
   Name,
