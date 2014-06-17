@@ -63,3 +63,9 @@ tests/objc/record/Particle_objc.m
 tests/objc/record/Particle_stub.h
 
 *.orig
+
+tests/objc/marshal-array/Main_objc.h
+
+tests/objc/marshal-array/Main_objc.m
+
+tests/objc/marshal-array/MarshalArray

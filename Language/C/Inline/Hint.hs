@@ -19,7 +19,7 @@ module Language.C.Inline.Hint (
   Hint(..), 
   
   -- * Querying of annotated entities
-  haskellTypeOf, stripAnnotation
+  haskellTypeOf, foreignTypeOf, stripAnnotation
 ) where
 
   -- common libraries
@@ -56,18 +56,21 @@ annotatedShowQ :: Show e => Annotated e -> Q String
 annotatedShowQ (e :> hint)  = ((show e ++ " :> ") ++) <$> showQ hint
 annotatedShowQ (Typed name) = return $ "Typed " ++ show name
 
--- Hints imply marshalling strategies, which include source and destination types for marshalling.
+-- |Hints imply marshalling strategies, which include source and destination types for marshalling.
 --
 class Hint hint where
   haskellType :: hint -> Q TH.Type
+  foreignType :: hint -> Q (Maybe QC.Type)    -- ^In case of 'Nothing', the foreign type is determined by the Haskell type.
   showQ       :: hint -> Q String
   
 instance Hint Name where   -- must be a type name
   haskellType = conT
+  foreignType = const (return Nothing)
   showQ       = return . show
       
 instance Hint (Q TH.Type) where
   haskellType = id
+  foreignType = const (return Nothing)
   showQ       = (show <$>)
 
 -- |Determine the Haskell type implied for the given annotated entity.
@@ -87,6 +90,12 @@ haskellTypeOf (Typed name)
               show (TH.ppr nonVarInfo)
           }
     }
+
+-- |Determine the foreign type *directly* implied for the given annotated entity if any.
+--
+foreignTypeOf :: Annotated e -> Q (Maybe QC.Type)
+foreignTypeOf (_ :> hint)  = foreignType hint
+foreignTypeOf (Typed name) = return Nothing
 
 -- |Remove the annotation.
 --

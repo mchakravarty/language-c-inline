@@ -26,11 +26,13 @@ module Language.C.Inline.ObjC.Marshal (
 
   -- common libraries
 import Data.Map                   as Map
+import Data.Maybe
 import Data.Word
 import Foreign.C                  as C
 import Foreign.C.String           as C
 import Foreign.Marshal            as C
 import Foreign.Ptr                as C
+import Foreign.ForeignPtr         as C
 import Foreign.StablePtr          as C
 import Language.Haskell.TH        as TH
 import Language.Haskell.TH.Syntax as TH
@@ -42,6 +44,7 @@ import Text.PrettyPrint.Mainland  as QC
 
   -- friends
 import Language.C.Inline.Error
+import Language.C.Inline.TH
 
 
 -- Determine foreign types
@@ -194,6 +197,15 @@ generateHaskellToCMarshaller hsTy@(ConT maybe `AppT` argTy) cTy
                                            )
         _ -> reportErrorAndFail ObjC $ "missing 'Maybe' marshalling for '" ++ prettyQC cTy ++ "' to '" ++ TH.pprint hsTy ++ "'"
     }
+generateHaskellToCMarshaller hsTy cTy@(Type (DeclSpec _ _ (Tnamed (Id name _) _ _) _) (Ptr _ (DeclRoot _) _) _)
+  | Just name == maybeHeadName                         -- ForeignPtr mapped to an Objective-C class
+  = return ( ptrOfForeignPtrWrapper hsTy
+           , cTy
+           , \val cont -> [| C.withForeignPtr ($(unwrapForeignPtrWrapper hsTy) $val) $cont |]
+           , \argName -> [cexp| $id:(show argName) |]
+           )
+  where
+    maybeHeadName = fmap nameBase $ headTyConName hsTy
 generateHaskellToCMarshaller hsTy cTy
   | Just hsMarshalTy <- Map.lookup cTy cIntegralMap    -- checking whether it is an integral type
   = return ( hsMarshalTy
@@ -232,6 +244,17 @@ generateHaskellToCMarshaller hsTy cTy
 -- * Generator for the C-side marshalling code.
 --
 generateCToHaskellMarshaller :: TH.Type -> QC.Type -> Q (TH.TypeQ, QC.Type, HaskellMarshaller, CMarshaller)
+generateCToHaskellMarshaller hsTy cTy@(Type (DeclSpec _ _ (Tnamed (Id name _) _ _) _) (Ptr _ (DeclRoot _) _) _)
+  | Just name == maybeHeadName                         -- ForeignPtr mapped to an Objective-C class
+  = return ( ptrOfForeignPtrWrapper hsTy
+           , cTy
+           , \val cont -> do { let datacon = foreignWrapperDatacon hsTy
+                             ; [| do { fptr <- newForeignPtr_ $val; $cont ($datacon fptr) } |] 
+                             }
+           , \argName -> [cexp| $id:(show argName) |]
+           )
+  where
+    maybeHeadName = fmap nameBase $ headTyConName hsTy
 generateCToHaskellMarshaller hsTy cTy
   | Just hsMarshalTy <- Map.lookup cTy cIntegralMap    -- checking whether it is an integral type
   = return ( hsMarshalTy

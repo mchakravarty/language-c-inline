@@ -14,13 +14,16 @@
 module Language.C.Inline.ObjC (
 
   -- * Re-export types from 'Foreign.C'
-  module Foreign.C.Types, CString, CStringLen, CWString, CWStringLen, Errno,
+  module Foreign.C.Types, CString, CStringLen, CWString, CWStringLen, Errno, ForeignPtr,
+
+  -- * Re-export types from Template Haskell
+  Name,
 
   -- * Combinators for inline Objective-C 
-  objc_import, objc_interface, objc_implementation, objc_record, objc, objc_emit,
+  objc_import, objc_interface, objc_implementation, objc_record, objc, objc_emit, objc_typecheck,
   
   -- * Marshalling annotations
-  Annotated(..), (<:), void,
+  Annotated(..), (<:), void, Class(..), IsType,
 
   -- * Property maps
   PropertyAccess, (==>), (-->)
@@ -38,6 +41,7 @@ import Data.Maybe
 import Foreign.C                  as C 
 import Foreign.C.String           as C
 import Foreign.C.Types
+import Foreign.ForeignPtr         as C
 import Foreign.Marshal            as C  hiding (void)
 import Language.Haskell.TH        as TH
 import Language.Haskell.TH.Syntax as TH
@@ -53,6 +57,7 @@ import Text.PrettyPrint.Mainland  as QC
 import Language.C.Inline.Error
 import Language.C.Inline.Hint
 import Language.C.Inline.State
+import Language.C.Inline.ObjC.Hint
 import Language.C.Inline.ObjC.Marshal
 
 
@@ -382,8 +387,8 @@ objc ann_vars ann_e
     ; resTy  <- haskellTypeOf ann_e
 
         -- Determine C types
-    ; maybe_cArgTys <- mapM (haskellTypeToCType ObjC) varTys
-    ; maybe_cResTy  <- haskellTypeToCType ObjC resTy
+    ; maybe_cArgTys <- mapM annotatedHaskellTypeToCType ann_vars
+    ; maybe_cResTy  <- annotatedHaskellTypeToCType ann_e
     ; let cannotMapAllTypes = Nothing `elem` (maybe_cResTy : maybe_cArgTys)
           cArgTys           = map maybeErrorCtype maybe_cArgTys
           cResTy            = maybeErrorCtype maybe_cResTy
@@ -402,7 +407,7 @@ objc ann_vars ann_e
     ; let hsWrapperTy = haskellWrapperType [] bridgeArgTys bridgeResTy
 
         -- FFI setup for the C wrapper
-    ; cwrapperName <- newName "cwrapper"
+    ; cwrapperName <- show <$> newName "cwrapper" >>= newName   -- Don't ask...
     ; stashHS
         [ forImpD CCall Safe (show cwrapperName) cwrapperName hsWrapperTy
         ]
@@ -440,6 +445,14 @@ objc ann_vars ann_e
             ; reportErrorWithLang ObjC $ "invalid marshalling for result type " ++ show ty
             }
         ; [| error "error in inline Objective-C expression" |]
+        }
+        
+    annotatedHaskellTypeToCType ann_e
+      = do
+        { maybe_objcType <- foreignTypeOf ann_e
+        ; case maybe_objcType of
+            Nothing       -> haskellTypeOf ann_e >>= haskellTypeToCType ObjC
+            Just objcType -> return $ Just objcType
         }
 
 -- Turn a list of argument types and a result type into a Haskell wrapper signature.
@@ -558,3 +571,13 @@ objc_emit
     info fname = "// Generated code: DO NOT EDIT\n\
                  \//   generated from '" ++ fname ++ "'\n\
                  \//   by package 'language-c-inline'\n\n"
+
+-- |Force type checking of all declaration appearing earlier in this module.
+-- 
+-- Template Haskell performs type checking on declaration groups seperated by toplevel splices. In order for a type
+-- declaration to be available to an Objective-C inline directive, the type declaration must be in an earlier
+-- declaration group than the Objective-C inline directive. A toplevel Objective-C inline directive always is the start
+-- of a new declaration group; hence, it can be considered to be implicitly preceded by an 'objc_typecheck'.
+--
+objc_typecheck :: Q [TH.Dec]
+objc_typecheck = return []

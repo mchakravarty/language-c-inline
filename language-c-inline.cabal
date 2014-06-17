@@ -1,5 +1,5 @@
 Name:                   language-c-inline
-Version:                0.7.1.0
+Version:                0.7.2.0
 Cabal-version:          >= 1.9.2
 Tested-with:            GHC == 7.6.3, GHC == 7.8.2
 Build-type:             Simple
@@ -16,7 +16,7 @@ Description:            This library provides inline C & Objective-C code using 
                         .
                         Known bugs: <https://github.com/mchakravarty/language-c-inline/issues>
                         .
-                        * New in 0.7.0: Record marshalling
+                        * New in 0.7.0: Record marshalling; foreign pointer-class marshalling
                         .
                         * New in 0.6.0: Introduction of explicit marshalling hints (for more flexibility and support of
                         GHC 7.8's untyped Template Haskell quotations)
@@ -84,6 +84,8 @@ Library
   Other-modules:        Language.C.Inline.Error
                         Language.C.Inline.Hint
                         Language.C.Inline.State
+                        Language.C.Inline.TH
+                        Language.C.Inline.ObjC.Hint
                         Language.C.Inline.ObjC.Marshal
 
   Extensions:           TemplateHaskell, QuasiQuotes
