@@ -16,9 +16,9 @@ module Language.C.Inline.State (
   State,
   
   -- * State query and update operations
-  setForeignTable, stashHeader, stashObjC_h, stashObjC_m, stashHS, 
+  setForeignTable, stashHeader, stashMarshaller, stashObjC_h, stashObjC_m, stashHS, 
   extendJumpTable,
-  getForeignTable, getForeignLabels, getHeaders, getHoistedObjC, getHoistedHS
+  getForeignTable, getForeignLabels, getHeaders, getMarshallers, lookupMarshaller, getHoistedObjC, getHoistedHS
 ) where
 
   -- common libraries
@@ -33,11 +33,18 @@ import System.IO.Unsafe                 (unsafePerformIO)
 import Language.C.Quote           as QC
 
 
+type CustomMarshaller = ( TH.Type         -- Haskell type
+                        , TH.Type         -- Haskell-side class type
+                        , QC.Type         -- C type
+                        , TH.Name         -- Haskell->C marshaller function
+                        , TH.Name)        -- C->Haskell marshaller function
+
 data State 
   = State
     { foreignTable  :: Q TH.Exp            -- table of foreign labels
     , foreignLabels :: [Name]              -- list of foreign imported names to populate 'foreignTable'
     , headers       :: [String]            -- imported Objective-C headers
+    , marshallers   :: [CustomMarshaller]  -- User defined marshallers
     , hoistedObjC_h :: [QC.Definition]     -- Objective-C that goes into the .h
     , hoistedObjC_m :: [QC.Definition]     -- Objective-C that goes into the .m
     , hoistedHS     :: [TH.Dec]            -- Haskell that goes at the end of the module
@@ -48,9 +55,10 @@ state :: IORef State
 state = unsafePerformIO $ 
           newIORef $ 
             State
-            { foreignTable  = error "InlineObjC: internal error: 'foreignTable' undefined"
+            { foreignTable  = error "Language.C.Inline.State: internal error: 'foreignTable' undefined"
             , foreignLabels = []
             , headers       = []
+            , marshallers   = []
             , hoistedObjC_h = []
             , hoistedObjC_m = []
             , hoistedHS     = []
@@ -68,6 +76,9 @@ setForeignTable e = modifyState (\s -> s {foreignTable = e})
 
 stashHeader :: String -> Q ()
 stashHeader header = modifyState (\s -> s {headers = header : headers s})
+
+stashMarshaller :: CustomMarshaller -> Q ()
+stashMarshaller marshaller = modifyState (\s -> s {marshallers = marshaller : marshallers s})
 
 stashObjC_h :: [QC.Definition] -> Q ()
 stashObjC_h defs = modifyState (\s -> s {hoistedObjC_h = hoistedObjC_h s ++ defs})
@@ -97,6 +108,19 @@ getForeignLabels = readState foreignLabels
 
 getHeaders :: Q [String]
 getHeaders = reverse <$> readState headers
+
+getMarshallers :: Q [CustomMarshaller]
+getMarshallers = readState marshallers
+
+lookupMarshaller :: TH.Type -> Q (Maybe CustomMarshaller)
+lookupMarshaller ty
+  = do
+    { marshallers <- getMarshallers
+    ; case filter (\(hsTy, _, _, _, _) -> hsTy == ty) marshallers of
+        []           -> return Nothing
+        marshaller:_ -> return $ Just marshaller
+    }
+
 
 getHoistedObjC :: Q ([QC.Definition], [QC.Definition])
 getHoistedObjC = (,) <$> readState hoistedObjC_h <*> readState hoistedObjC_m

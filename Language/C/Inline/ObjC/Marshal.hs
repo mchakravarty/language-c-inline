@@ -44,6 +44,7 @@ import Text.PrettyPrint.Mainland  as QC
 
   -- friends
 import Language.C.Inline.Error
+import Language.C.Inline.State
 import Language.C.Inline.TH
 
 
@@ -53,35 +54,43 @@ import Language.C.Inline.TH
 -- |Determine the C type that we map a given Haskell type to.
 --
 haskellTypeToCType :: QC.Extensions -> TH.Type -> Q (Maybe QC.Type)
-haskellTypeToCType lang (ForallT _tvs _ctxt ty)           -- ignore quantifiers and contexts
+haskellTypeToCType lang (ForallT _tvs _ctxt ty)                -- ignore quantifiers and contexts
   = haskellTypeToCType lang ty
-haskellTypeToCType lang (ListT `AppT` (ConT char))        -- marshal '[Char]' as 'String'
-  | char == ''Char 
-  = haskellTypeNameToCType lang ''String
-haskellTypeToCType lang ty@(ConT maybeC `AppT` argTy)     -- encode a 'Maybe' around a pointer type in the pointer
-  | maybeC == ''Maybe
+haskellTypeToCType lang ty                              
   = do
-    { cargTy <- haskellTypeToCType lang argTy
-    ; if fmap isCPtrType cargTy == Just True
-      then
-        return cargTy
-      else
-        unknownType lang ty
+    { maybe_marshaller <- lookupMarshaller ty
+    ; case maybe_marshaller of
+        Just (_, _, cTy, _, _) -> return $ Just cTy            -- use a custom marshaller if one is available for this type
+        Nothing                -> haskellTypeToCType' lang ty  -- otherwise, continue below...
     }
-haskellTypeToCType lang (ConT tc)                         -- nullary type constructors are delegated
-  = haskellTypeNameToCType lang tc
-haskellTypeToCType lang ty@(VarT tv)                      -- can't marshal an unknown type
-  = unknownType lang ty
-haskellTypeToCType lang ty@(UnboxedTupleT _)              -- there is nothing like unboxed tuples in C
-  = unknownType lang ty
-haskellTypeToCType _lang ty                               -- everything else is marshalled as a stable pointer
-  = return $ Just [cty| typename HsStablePtr |]
+  where
+    haskellTypeToCType' lang (ListT `AppT` (ConT char))        -- marshal '[Char]' as 'String'
+      | char == ''Char 
+      = haskellTypeNameToCType lang ''String
+    haskellTypeToCType' lang ty@(ConT maybeC `AppT` argTy)     -- encode a 'Maybe' around a pointer type in the pointer
+      | maybeC == ''Maybe
+      = do
+        { cargTy <- haskellTypeToCType lang argTy
+        ; if fmap isCPtrType cargTy == Just True
+          then
+            return cargTy
+          else
+            unknownType lang ty
+        }
+    haskellTypeToCType' lang (ConT tc)                         -- nullary type constructors are delegated
+      = haskellTypeNameToCType lang tc
+    haskellTypeToCType' lang ty@(VarT tv)                      -- can't marshal an unknown type
+      = unknownType lang ty
+    haskellTypeToCType' lang ty@(UnboxedTupleT _)              -- there is nothing like unboxed tuples in C
+      = unknownType lang ty
+    haskellTypeToCType' _lang ty                               -- everything else is marshalled as a stable pointer
+      = return $ Just [cty| typename HsStablePtr |]
 
-unknownType lang ty 
-  = do
-    { reportErrorWithLang lang $ "don't know a foreign type suitable for Haskell type '" ++ TH.pprint ty ++ "'"
-    ; return Nothing
-    }
+    unknownType lang ty 
+      = do
+        { reportErrorWithLang lang $ "don't know a foreign type suitable for Haskell type '" ++ TH.pprint ty ++ "'"
+        ; return Nothing
+        }
 
 -- |Determine the C type that we map a given Haskell type constructor to — i.e., we map all Haskell types
 -- whose outermost constructor is the given type constructor to the returned C type.
@@ -171,8 +180,37 @@ type CMarshaller = TH.Name -> QC.Exp
 -- * Generator for the Haskell-side marshalling code.
 -- * Generator for the C-side marshalling code.
 --
-generateHaskellToCMarshaller :: TH.Type -> QC.Type -> Q (TH.TypeQ, QC.Type, HaskellMarshaller, CMarshaller)
-generateHaskellToCMarshaller hsTy@(ConT maybe `AppT` argTy) cTy
+generateHaskellToCMarshaller :: TH.Type -> QC.Type -> Q (TH.TypeQ, QC.Type, HaskellMarshaller, CMarshaller)    
+generateHaskellToCMarshaller hsTy cTy@(Type (DeclSpec _ _ (Tnamed (Id name _) _ _) _) (Ptr _ (DeclRoot _) _) _)
+  | Just name == maybeHeadName                         -- wrapped ForeignPtr mapped to an Objective-C class
+  = return ( ptrOfForeignPtrWrapper hsTy
+           , cTy
+           , \val cont -> [| C.withForeignPtr ($(unwrapForeignPtrWrapper hsTy) $val) $cont |]
+           , \argName -> [cexp| $id:(show argName) |]
+           )
+  | otherwise
+  = do
+    { maybe_marshaller <- lookupMarshaller hsTy
+    ; case maybe_marshaller of
+        Just (_, classTy, cTy', haskellToC, _cToHaskell)
+          | cTy' == cTy                                -- custom marshaller mapping to an Objective-C class
+          -> return ( ptrOfForeignPtrWrapper classTy
+                    , cTy
+                    , \val cont -> [| do
+                                      { nsClass <- $(varE haskellToC) $val
+                                      ; C.withForeignPtr ($(unwrapForeignPtrWrapper classTy) nsClass) $cont
+                                      } |]
+                    , \argName -> [cexp| $id:(show argName) |]
+                    )
+        Nothing                                        -- other => continue below
+          -> generateHaskellToCMarshaller' hsTy cTy
+    }
+  where
+    maybeHeadName = fmap nameBase $ headTyConName hsTy
+generateHaskellToCMarshaller hsTy cTy = generateHaskellToCMarshaller' hsTy cTy
+
+generateHaskellToCMarshaller' :: TH.Type -> QC.Type -> Q (TH.TypeQ, QC.Type, HaskellMarshaller, CMarshaller)
+generateHaskellToCMarshaller' hsTy@(ConT maybe `AppT` argTy) cTy
   | maybe == ''Maybe && isCPtrType cTy
   = do 
     { (argTy', cTy', hsMarsh, cMarsh) <- generateHaskellToCMarshaller argTy cTy
@@ -197,16 +235,7 @@ generateHaskellToCMarshaller hsTy@(ConT maybe `AppT` argTy) cTy
                                            )
         _ -> reportErrorAndFail ObjC $ "missing 'Maybe' marshalling for '" ++ prettyQC cTy ++ "' to '" ++ TH.pprint hsTy ++ "'"
     }
-generateHaskellToCMarshaller hsTy cTy@(Type (DeclSpec _ _ (Tnamed (Id name _) _ _) _) (Ptr _ (DeclRoot _) _) _)
-  | Just name == maybeHeadName                         -- ForeignPtr mapped to an Objective-C class
-  = return ( ptrOfForeignPtrWrapper hsTy
-           , cTy
-           , \val cont -> [| C.withForeignPtr ($(unwrapForeignPtrWrapper hsTy) $val) $cont |]
-           , \argName -> [cexp| $id:(show argName) |]
-           )
-  where
-    maybeHeadName = fmap nameBase $ headTyConName hsTy
-generateHaskellToCMarshaller hsTy cTy
+generateHaskellToCMarshaller' hsTy cTy
   | Just hsMarshalTy <- Map.lookup cTy cIntegralMap    -- checking whether it is an integral type
   = return ( hsMarshalTy
            , cTy
@@ -253,9 +282,32 @@ generateCToHaskellMarshaller hsTy cTy@(Type (DeclSpec _ _ (Tnamed (Id name _) _ 
                              }
            , \argName -> [cexp| $id:(show argName) |]
            )
+  | otherwise
+  = do
+    { maybe_marshaller <- lookupMarshaller hsTy
+    ; case maybe_marshaller of
+        Just (_, classTy, cTy', _haskellToC, cToHaskell)
+          | cTy' == cTy                                -- custom marshaller mapping to an Objective-C class
+          -> return ( ptrOfForeignPtrWrapper classTy
+                    , cTy
+                    , \val cont -> do { let datacon = foreignWrapperDatacon classTy
+                                      ; [| do 
+                                           { fptr <- newForeignPtr_ $val
+                                           ; hsVal <- $(varE cToHaskell) ($datacon fptr) 
+                                           ; $cont hsVal
+                                           } |] 
+                                      }
+                    , \argName -> [cexp| $id:(show argName) |]
+                    )
+        Nothing                                        -- other => continue below
+          -> generateCToHaskellMarshaller' hsTy cTy
+    }
   where
     maybeHeadName = fmap nameBase $ headTyConName hsTy
-generateCToHaskellMarshaller hsTy cTy
+generateCToHaskellMarshaller hsTy cTy = generateCToHaskellMarshaller' hsTy cTy
+
+generateCToHaskellMarshaller' :: TH.Type -> QC.Type -> Q (TH.TypeQ, QC.Type, HaskellMarshaller, CMarshaller)
+generateCToHaskellMarshaller' hsTy cTy
   | Just hsMarshalTy <- Map.lookup cTy cIntegralMap    -- checking whether it is an integral type
   = return ( hsMarshalTy
            , cTy

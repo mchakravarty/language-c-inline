@@ -13,7 +13,7 @@
 
 module Language.C.Inline.TH (
   -- * Decompose type expressions
-  headTyConName,
+  headTyConName, headTyConNameOrError,
   
   -- * Decompose idiomatic declarations
   foreignWrapperDatacon, ptrOfForeignPtrWrapper, unwrapForeignPtrWrapper
@@ -40,6 +40,14 @@ headTyConName ty
   = case splitAppTy ty of
       (ConT name, _) -> Just name
       _              -> Nothing
+
+-- |Like 'headTyConName', but fail if the head is not a type constructor.
+--
+headTyConNameOrError :: QC.Extensions -> TH.Type -> Q TH.Name
+headTyConNameOrError lang ty
+  = case headTyConName ty of
+      Just name -> return name
+      Nothing   -> reportErrorAndFail lang $ "expected the head of '" ++ show ty ++ "' to be a type constructor"
 
 -- |Decompose an n-ary type application into its head and arguments.
 --

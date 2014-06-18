@@ -72,7 +72,7 @@ instance Hint Class where
       }
   foreignType (Class tyish)
     = do
-      { name <- theType tyish >>= headTyConNameOrError
+      { name <- theType tyish >>= headTyConNameOrError QC.ObjC
       ; return $ Just [cty| typename $id:(nameBase name) * |]
       }
   showQ (Class tyish) 
@@ -80,9 +80,3 @@ instance Hint Class where
       { ty <- theType tyish
       ; return $ "Class " ++ show ty
       }
-
-headTyConNameOrError :: TH.Type -> Q TH.Name
-headTyConNameOrError ty
-  = case headTyConName ty of
-      Just name -> return name
-      Nothing   -> reportErrorAndFail QC.ObjC $ "expected the head of '" ++ show ty ++ "' to be a type constructor"

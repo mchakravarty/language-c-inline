@@ -38,12 +38,13 @@ listOfStringToNSArray strs
     addElement marr str
       = $(objc ['marr :> Class [t|NSMutableArray NSString|], 'str :> ''String] $ void [cexp| [marr addObject:str] |])
 
+nsArrayToListOfString :: NSArray NSString -> IO [String]
+nsArrayToListOfString = error "not needed here"
+
+objc_marshaller 'listOfStringToNSArray 'nsArrayToListOfString
+
 go :: IO ()
-go 
-  = do
-    { arr <- listOfStringToNSArray msgs
-    ; $(objc ['arr :> Class [t|NSArray NSString|]] $ void [cexp| NSLog(arr.description) |])
-    }
+go = $(objc ['msgs :> [t| [String] |]] $ void [cexp| NSLog(@"%@", msgs.description) |])
   where
     msgs = ["Hello", "World!", "This is a bunch of 'String's!"]
 

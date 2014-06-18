@@ -20,7 +20,7 @@ module Language.C.Inline.ObjC (
   Name,
 
   -- * Combinators for inline Objective-C 
-  objc_import, objc_interface, objc_implementation, objc_record, objc, objc_emit, objc_typecheck,
+  objc_import, objc_interface, objc_implementation, objc_record, objc_marshaller, objc_typecheck, objc, objc_emit,
   
   -- * Marshalling annotations
   Annotated(..), (<:), void, Class(..), IsType,
@@ -57,6 +57,7 @@ import Text.PrettyPrint.Mainland  as QC
 import Language.C.Inline.Error
 import Language.C.Inline.Hint
 import Language.C.Inline.State
+import Language.C.Inline.TH
 import Language.C.Inline.ObjC.Hint
 import Language.C.Inline.ObjC.Marshal
 
@@ -371,6 +372,40 @@ objc_record prefix objcClassName hsTyName ann_vars properties ifaceDecls impDecl
         |]
       where
         propTy = QC.Type spec decl loc
+
+-- |Declare a Haskell<->Objective-C marshaller pair to be used in all subsequent marshalling code generation.
+--
+-- On the Objective-C side, the marshallers must use a wrapped foreign pointer to an Objective-C class (just as those
+-- of 'Class' hints). The domain and codomain of the two marshallers must be the opposite and both are executing in 'IO'.
+--
+objc_marshaller :: TH.Name -> TH.Name -> Q [TH.Dec]
+objc_marshaller haskellToObjCName objcToHaskellName
+  = do
+    {   -- check that the marshallers have compatible types
+    ; (hsTy1, classTy1) <- argAndResultTy haskellToObjCName
+    ; (classTy2, hsTy2) <- argAndResultTy objcToHaskellName
+    ; unless (hsTy1 == hsTy2 && classTy1 == classTy2) $
+        reportErrorAndFail QC.ObjC $ 
+          "the two marshallers must map between the same types"
+    
+    ; tyconName <- headTyConNameOrError QC.ObjC classTy1
+    ; let cTy = [cty| typename $id:(nameBase tyconName) * |]
+    ; stashMarshaller (hsTy1, classTy1, cTy, haskellToObjCName, objcToHaskellName)
+    ; return []
+    }
+  where
+    argAndResultTy name
+      = do
+        { info <- reify name
+        ; case info of
+            VarI _ (ArrowT `AppT` argTy `AppT` (ConT io `AppT` resTy)) _ _
+              | io == ''IO
+              -> return (argTy, resTy)
+            VarI _ ty _ _ -> reportErrorAndFail QC.ObjC $ 
+                               show name ++ "'s type must match 'a -> IO r'"
+            other         -> reportErrorAndFail QC.ObjC $ 
+                               show name ++ " must be a function"
+        }
 
 -- |Inline Objective-C expression.
 --
