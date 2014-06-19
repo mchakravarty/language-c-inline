@@ -542,9 +542,15 @@ generateCWrapper cwrapperName argTys vars argMarshallers cWrapperArgTys argVars 
 
 -- cParams [a1, .., an] [v1, .., vn] = [[cparam| a1 v1 |], .., [cparam| an vn |]]
 --
+-- * If the list is empty, we will return a singleton 'void' parameter.
+--
 cParams :: [QC.Type] -> [TH.Name] -> [QC.Param]
-cParams [] []                     = []
-cParams (argTy:argTys) (var:vars) = [cparam| $ty:argTy $id:(show var) |] : cParams argTys vars
+cParams []  []    = [ [cparam| void |] ]
+cParams tys names = cParams' tys names
+  where
+    cParams' [] []                     = []
+    cParams' (argTy:argTys) (var:vars) = [cparam| $ty:argTy $id:(show var) |] : cParams' argTys vars
+
 
 -- Produce a Haskell expression that calls a function with all arguments and the result marshalled with the supplied
 -- marshallers.
