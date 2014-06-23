@@ -215,26 +215,39 @@ generateHaskellToCMarshaller' hsTy@(ConT maybe `AppT` argTy) cTy
   = do 
     { (argTy', cTy', hsMarsh, cMarsh) <- generateHaskellToCMarshaller argTy cTy
     ; ty <- argTy'
-    ; case ty of
-        ConT ptr `AppT` _ 
-          | ptr == ''C.Ptr       -> return ( argTy'
-                                           , cTy'
-                                           , \val cont -> [| case $val of
-                                                               Nothing   -> $cont C.nullPtr
-                                                               Just val' -> $(hsMarsh [|val'|] cont) |] 
-                                           , cMarsh
-                                           )
-          | ptr == ''C.StablePtr -> return ( argTy'
-                                           , cTy'
-                                           , \val cont -> [| case $val of
-                                                               Nothing   -> $cont (C.castPtrToStablePtr C.nullPtr)
-                                                               Just val' -> $(hsMarsh [|val'|] cont) |]
-                                                               -- NB: the above cast works for GHC, but is in the grey area
-                                                               --     of the FFI spec
-                                           , cMarsh
-                                           )
-        _ -> reportErrorAndFail ObjC $ "missing 'Maybe' marshalling for '" ++ prettyQC cTy ++ "' to '" ++ TH.pprint hsTy ++ "'"
+    ; resolve ty argTy' cTy' hsMarsh cMarsh
     }
+  where
+    resolve ty argTy' cTy' hsMarsh cMarsh
+      = case ty of
+          ConT ptr `AppT` _ 
+            | ptr == ''C.Ptr       -> return ( argTy'
+                                             , cTy'
+                                             , \val cont -> [| case $val of
+                                                                 Nothing   -> $cont C.nullPtr
+                                                                 Just val' -> $(hsMarsh [|val'|] cont) |] 
+                                             , cMarsh
+                                             )
+            | ptr == ''C.StablePtr -> return ( argTy'
+                                             , cTy'
+                                             , \val cont -> [| case $val of
+                                                                 Nothing   -> $cont (C.castPtrToStablePtr C.nullPtr)
+                                                                 Just val' -> $(hsMarsh [|val'|] cont) |]
+                                                                 -- NB: the above cast works for GHC, but is in the grey area
+                                                                 --     of the FFI spec
+                                             , cMarsh
+                                             )
+          ConT con 
+            -> do
+               { info <- reify con
+               ; case info of
+                   TyConI (TySynD _name [] tysyn) -> resolve tysyn argTy' cTy' hsMarsh cMarsh
+                                                       -- chase type synonyms (only nullary ones at the moment)
+                   _ -> missingErr
+               }
+          _ -> missingErr
+    missingErr = reportErrorAndFail ObjC $ 
+                   "missing 'Maybe' marshalling for '" ++ prettyQC cTy ++ "' to '" ++ TH.pprint hsTy ++ "'"
 generateHaskellToCMarshaller' hsTy cTy
   | Just hsMarshalTy <- Map.lookup cTy cIntegralMap    -- checking whether it is an integral type
   = return ( hsMarshalTy
@@ -252,7 +265,7 @@ generateHaskellToCMarshaller' hsTy cTy
   = return ( [t| C.CString |]
            , [cty| char * |]
            , \val cont -> [| C.withCString $val $cont |]
-           , \argName -> [cexp| [NSString stringWithUTF8String: $id:(show argName)] |]
+           , \argName -> [cexp| ($id:(show argName)) ? [NSString stringWithUTF8String: $id:(show argName)] : nil |]
            )
   | cTy == [cty| typename HsStablePtr |] 
   = return ( [t| C.StablePtr $(return hsTy) |]
@@ -307,6 +320,44 @@ generateCToHaskellMarshaller hsTy cTy@(Type (DeclSpec _ _ (Tnamed (Id name _) _ 
 generateCToHaskellMarshaller hsTy cTy = generateCToHaskellMarshaller' hsTy cTy
 
 generateCToHaskellMarshaller' :: TH.Type -> QC.Type -> Q (TH.TypeQ, QC.Type, HaskellMarshaller, CMarshaller)
+generateCToHaskellMarshaller' hsTy@(ConT maybe `AppT` argTy) cTy
+  | maybe == ''Maybe && isCPtrType cTy
+  = do 
+    { (argTy', cTy', hsMarsh, cMarsh) <- generateCToHaskellMarshaller argTy cTy
+    ; ty <- argTy'
+    ; resolve ty argTy' cTy' hsMarsh cMarsh
+    }
+  where
+    resolve ty argTy' cTy' hsMarsh cMarsh
+      = case ty of
+          ConT ptr `AppT` _ 
+            | ptr == ''C.Ptr       -> return ( argTy'
+                                             , cTy'
+                                             , \val cont -> [| if $val == C.nullPtr 
+                                                               then $cont Nothing 
+                                                               else $(hsMarsh val [| $cont . Just |]) |]
+                                             , cMarsh
+                                             )
+            | ptr == ''C.StablePtr -> return ( argTy'
+                                             , cTy'
+                                             , \val cont -> [| if (C.castStablePtrToPtr $val) == C.nullPtr
+                                                               then $cont Nothing 
+                                                               else $(hsMarsh val [| $cont . Just |]) |]
+                                                                 -- NB: the above cast works for GHC, but is in the grey area
+                                                                 --     of the FFI spec
+                                             , cMarsh
+                                             )
+          ConT con 
+            -> do
+               { info <- reify con
+               ; case info of
+                   TyConI (TySynD _name [] tysyn) -> resolve tysyn argTy' cTy' hsMarsh cMarsh
+                                                       -- chase type synonyms (only nullary ones at the moment)
+                   _ -> missingErr
+               }
+          _ -> missingErr
+    missingErr = reportErrorAndFail ObjC $ 
+                   "missing 'Maybe' marshalling for '" ++ prettyQC cTy ++ "' to '" ++ TH.pprint hsTy ++ "'"
 generateCToHaskellMarshaller' hsTy cTy
   | Just hsMarshalTy <- Map.lookup cTy cIntegralMap    -- checking whether it is an integral type
   = return ( hsMarshalTy
@@ -328,12 +379,14 @@ generateCToHaskellMarshaller' hsTy cTy
                let arg = show argName 
                in
                [cexp|
-                 ({ typename NSUInteger maxLen = [$id:arg maximumLengthOfBytesUsingEncoding:NSUTF8StringEncoding] + 1;
-                   char *buffer = malloc (maxLen);
-                   if (![$id:arg getCString:buffer maxLength:maxLen encoding:NSUTF8StringEncoding])
-                     *buffer = '\0';
-                   buffer;
-                 })
+                 ( $id:arg )
+                 ? ({ typename NSUInteger maxLen = [$id:arg maximumLengthOfBytesUsingEncoding:NSUTF8StringEncoding] + 1;
+                     char *buffer = malloc (maxLen);
+                     if (![$id:arg getCString:buffer maxLength:maxLen encoding:NSUTF8StringEncoding])
+                       *buffer = '\0';
+                     buffer;
+                   })
+                 : nil
                |]
            )
   | cTy == [cty| typename HsStablePtr |] 
