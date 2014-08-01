@@ -13,7 +13,7 @@ import Language.C.Inline.ObjC
   -- friends
 import Interpreter
 
-objc_import ["<Cocoa/Cocoa.h>", "HsFFI.h"]
+objc_import ["<Cocoa/Cocoa.h>"]
 
 
 -- Haskell code used from Objective-C.

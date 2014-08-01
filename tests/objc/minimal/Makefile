@@ -1,4 +1,6 @@
 HC      = ghc
+LIBDIR  = $(shell $(HC) --print-libdir)
+CFLAGS  = -fobjc-arc -I$(LIBDIR)/include -I$(LIBDIR)/../../includes
 HCFLAGS = 
 LDFLAGS = -package template-haskell -package language-c-quote -package language-c-inline -framework Foundation
 

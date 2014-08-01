@@ -8,7 +8,7 @@ module Particle (objc_initialise) where
 import Language.C.Quote.ObjC
 import Language.C.Inline.ObjC
 
-objc_import ["<Foundation/Foundation.h>", "HsFFI.h"]
+objc_import ["<Foundation/Foundation.h>"]
 
 
 -- Haskell code used from Objective-C.
