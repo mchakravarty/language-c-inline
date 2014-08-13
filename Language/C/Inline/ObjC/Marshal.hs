@@ -137,6 +137,7 @@ haskellToCTypeMap ObjC
     , (''Double,  [cty| double |])
     , (''CDouble, [cty| double |])
     --
+    , (''Bool,    [cty| typename BOOL |])
     , (''String,  [cty| typename NSString * |])
     , (''(),      [cty| void |])
     ]
@@ -261,6 +262,12 @@ generateHaskellToCMarshaller' hsTy cTy
            , \val cont -> [| $cont (realToFrac $val) |]
            , \argName -> [cexp| $id:(show argName) |]
            )
+  | cTy == [cty| typename BOOL |] 
+  = return ( [t| C.CSChar |]
+           , cTy
+           , \val cont -> [| $cont (C.fromBool $val) |]
+           , \argName -> [cexp| ($id:(show argName)) |]
+           )
   | cTy == [cty| typename NSString * |] 
   = return ( [t| C.CString |]
            , [cty| char * |]
@@ -369,6 +376,12 @@ generateCToHaskellMarshaller' hsTy cTy
   = return ( hsMarshalTy
            , cTy
            , \val cont -> [| $cont (realToFrac $val) |]
+           , \argName -> [cexp| $id:(show argName) |]
+           )
+  | cTy == [cty| typename BOOL |]
+  = return ( [t| C.CSChar |]
+           , cTy
+           , \val cont -> [| $cont (C.toBool $val) |]
            , \argName -> [cexp| $id:(show argName) |]
            )
   | cTy == [cty| typename NSString * |]
