@@ -16,7 +16,7 @@ Description:            This library provides inline C & Objective-C code using 
                         .
                         Known bugs: <https://github.com/mchakravarty/language-c-inline/issues>
                         .
-                        * New in 0.7.5: (1) Record marshalling; (2) foreign pointer-class marshalling; (3) custom type
+                        * New in 0.7.6: (1) Record marshalling; (2) foreign pointer-class marshalling; (3) custom type
                         marshallers. Generated _objc.m files now always include "HsFFI.h" (as the tool can generate type names
                         declared in that header). Marshals 'Bool' as 'BOOL'. Marshal 'Int' and 'Word' to 'NSInteger' and
                         'NSUInteger', respectively.
