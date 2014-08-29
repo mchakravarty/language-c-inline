@@ -123,9 +123,9 @@ haskellToCTypeMap ObjC
     , (''CUChar,  [cty| unsigned char |])
     , (''CShort,  [cty| short |])
     , (''CUShort, [cty| unsigned short |])
-    , (''Int,     [cty| int |])
+    , (''Int,     [cty| typename NSInteger |])
     , (''CInt,    [cty| int |])
-    , (''Word,    [cty| unsigned int |])
+    , (''Word,    [cty| typename NSUInteger |])
     , (''CUInt,   [cty| unsigned int |])
     , (''CLong,   [cty| long |])
     , (''CULong,  [cty| unsigned long |])
@@ -418,17 +418,19 @@ generateCToHaskellMarshaller' hsTy cTy
   = reportErrorAndFail ObjC $ "cannot marshall '" ++ prettyQC cTy ++ "' to '" ++ TH.pprint hsTy ++ "'"    
 
 cIntegralMap = Map.fromList
-               [ ([cty| char |],               [t| C.CChar |])
-               , ([cty| signed char |],        [t| C.CChar |])
-               , ([cty| unsigned char |],      [t| C.CUChar |])
-               , ([cty| short |],              [t| C.CShort |])
-               , ([cty| unsigned short |],     [t| C.CUShort |])
-               , ([cty| int |],                [t| C.CInt |])
-               , ([cty| unsigned int |],       [t| C.CUInt |])
-               , ([cty| long |],               [t| C.CLong |])
-               , ([cty| unsigned long |],      [t| C.CULong |])
-               , ([cty| long long |],          [t| C.CLLong |])
-               , ([cty| unsigned long long |], [t| C.CULLong |])
+               [ ([cty| char |],                [t| C.CChar |])
+               , ([cty| signed char |],         [t| C.CChar |])
+               , ([cty| unsigned char |],       [t| C.CUChar |])
+               , ([cty| short |],               [t| C.CShort |])
+               , ([cty| unsigned short |],      [t| C.CUShort |])
+               , ([cty| int |],                 [t| C.CInt |])
+               , ([cty| unsigned int |],        [t| C.CUInt |])
+               , ([cty| long |],                [t| C.CLong |])
+               , ([cty| unsigned long |],       [t| C.CULong |])
+               , ([cty| long long |],           [t| C.CLLong |])
+               , ([cty| unsigned long long |],  [t| C.CULLong |])
+               , ([cty| typename NSInteger |],  [t| Int |])
+               , ([cty| typename NSUInteger |], [t| Word |])
                ]
 
 cFloatingMap = Map.fromList
