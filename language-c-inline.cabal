@@ -82,6 +82,8 @@ Library
                         mainland-pretty   >= 0.2.5,
                         template-haskell
 
+  Ghc-Options:          -O2 -Wall -fwarn-tabs -fno-warn-incomplete-patterns
+
   Exposed-modules:      Language.C.Inline.ObjC
 
   Other-modules:        Language.C.Inline.Error
@@ -103,7 +105,7 @@ Test-Suite concept
   Build-depends:        base              >= 4.0 && < 5,
                         language-c-quote,
                         language-c-inline
-  
+
   Frameworks:           Foundation
 
   Type:                 exitcode-stdio-1.0
@@ -113,4 +115,3 @@ Test-Suite concept
   Main-is:              MainInlineObjC.hs
 
   Other-modules:        TestInlineObjC
-  
