@@ -60,6 +60,7 @@ reportErrorAndFail' msg
 
 showLang :: QC.Extensions -> String
 showLang QC.Antiquotation = "C"
+showLang QC.C11           = "C 11"
 showLang QC.Gcc           = "GCC C"
 showLang QC.CUDA          = "CUDA C"
 showLang QC.OpenCL        = "OpenCL"

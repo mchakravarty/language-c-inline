@@ -14,10 +14,10 @@
 module Language.C.Inline.Hint (
   -- * Annotations
   Annotated(..), (<:), void, annotatedShowQ,
-  
+
   -- * Hints
-  Hint(..), 
-  
+  Hint(..),
+
   -- * Querying of annotated entities
   haskellTypeOf, foreignTypeOf, stripAnnotation
 ) where
@@ -62,12 +62,12 @@ class Hint hint where
   haskellType :: hint -> Q TH.Type
   foreignType :: hint -> Q (Maybe QC.Type)    -- ^In case of 'Nothing', the foreign type is determined by the Haskell type.
   showQ       :: hint -> Q String
-  
+
 instance Hint Name where   -- must be a type name
   haskellType = conT
   foreignType = const (return Nothing)
   showQ       = return . show
-      
+
 instance Hint (Q TH.Type) where
   haskellType = id
   foreignType = const (return Nothing)
@@ -83,10 +83,10 @@ haskellTypeOf (Typed name)
     ; case info of
         ClassOpI _ ty _ _ -> return ty
         VarI     _ ty _ _ -> return ty
-        nonVarInfo    -> 
+        nonVarInfo    ->
           do
-          { reportErrorAndFail QC.ObjC $ 
-              "expected '" ++ show name ++ "' to be a typed variable name, but it is " ++ 
+          { reportErrorAndFail QC.C11 $
+              "expected '" ++ show name ++ "' to be a typed variable name, but it is " ++
               show (TH.ppr nonVarInfo)
           }
     }

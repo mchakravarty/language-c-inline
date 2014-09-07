@@ -84,12 +84,15 @@ Library
 
   Ghc-Options:          -O2 -Wall -fwarn-tabs -fno-warn-incomplete-patterns
 
-  Exposed-modules:      Language.C.Inline.ObjC
+  Exposed-modules:      Language.C.Inline.C
+                        Language.C.Inline.ObjC
 
   Other-modules:        Language.C.Inline.Error
                         Language.C.Inline.Hint
                         Language.C.Inline.State
                         Language.C.Inline.TH
+                        Language.C.Inline.C.Hint
+                        Language.C.Inline.C.Marshal
                         Language.C.Inline.ObjC.Hint
                         Language.C.Inline.ObjC.Marshal
 
