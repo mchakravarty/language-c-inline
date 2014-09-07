@@ -25,7 +25,6 @@ module Language.C.Inline.Hint (
   -- common libraries
 import Control.Applicative
 import Language.Haskell.TH        as TH
-import Language.Haskell.TH.Syntax as TH
 
   -- quasi-quotation libraries
 import Language.C.Quote           as QC
@@ -95,10 +94,10 @@ haskellTypeOf (Typed name)
 --
 foreignTypeOf :: Annotated e -> Q (Maybe QC.Type)
 foreignTypeOf (_ :> hint)  = foreignType hint
-foreignTypeOf (Typed name) = return Nothing
+foreignTypeOf (Typed _) = return Nothing
 
 -- |Remove the annotation.
 --
 stripAnnotation :: Annotated e -> e
-stripAnnotation (e :> hint)  = e
+stripAnnotation (e :> _)  = e
 stripAnnotation (Typed name) = name

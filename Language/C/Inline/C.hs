@@ -31,16 +31,13 @@ module Language.C.Inline.C (
 import Control.Applicative
 import Control.Monad              hiding (void)
 import Data.Array
-import Data.Char
 import Data.Dynamic
 import Data.IORef
 import Data.List
 import Data.Maybe
 import Foreign.C                  as C
-import Foreign.C.String           as C
 import Foreign.C.Types
 import Foreign.ForeignPtr         as C
-import Foreign.Marshal            as C  hiding (void)
 import Language.Haskell.TH        as TH
 import Language.Haskell.TH.Syntax as TH
 import System.FilePath
@@ -55,7 +52,6 @@ import Text.PrettyPrint.Mainland  as QC
 import Language.C.Inline.Error
 import Language.C.Inline.Hint
 import Language.C.Inline.State
-import Language.C.Inline.TH
 import Language.C.Inline.C.Hint
 import Language.C.Inline.C.Marshal
 
@@ -148,7 +144,7 @@ c_implementation ann_vars defs
 
             -- Generate the C wrapper code (both prototype and definition)
         ; cArgVars <- mapM (\n -> newName $ "arg" ++ show n) [1..length cBridgeArgTys]
-        ; let cArgVarExps = [ [cexp| $id:(nameBase var) |] | var <- cArgVars]
+        ; let cArgVarExps = [ [cexp| $id:(nameBase var') |] | var' <- cArgVars]
               call        = [cexp| $id:(show hswrapperName) ( $args:cArgVarExps ) |]
               (_wrapperProto, wrapperDef)
                        = generateCWrapper cwrapperName cBridgeArgTys cArgVars cArgMarshallers cArgTys cArgVars
@@ -273,11 +269,11 @@ c ann_vars ann_e
         ; [| error "error in inline Objective-C expression" |]
         }
 
-    annotatedHaskellTypeToCType ann_e
+    annotatedHaskellTypeToCType ann
       = do
-        { maybe_cType <- foreignTypeOf ann_e
+        { maybe_cType <- foreignTypeOf ann
         ; case maybe_cType of
-            Nothing       -> haskellTypeOf ann_e >>= haskellTypeToCType C11
+            Nothing       -> haskellTypeOf ann >>= haskellTypeToCType C11
             Just cType -> return $ Just cType
         }
 

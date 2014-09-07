@@ -19,9 +19,9 @@ module Language.C.Inline.ObjC (
   -- * Re-export types from Template Haskell
   Name,
 
-  -- * Combinators for inline Objective-C 
+  -- * Combinators for inline Objective-C
   objc_import, objc_interface, objc_implementation, objc_record, objc_marshaller, objc_typecheck, objc, objc_emit,
-  
+
   -- * Marshalling annotations
   Annotated(..), (<:), void, Class(..), IsType,
 
@@ -38,11 +38,9 @@ import Data.Dynamic
 import Data.IORef
 import Data.List
 import Data.Maybe
-import Foreign.C                  as C 
-import Foreign.C.String           as C
+import Foreign.C                  as C
 import Foreign.C.Types
 import Foreign.ForeignPtr         as C
-import Foreign.Marshal            as C  hiding (void)
 import Language.Haskell.TH        as TH
 import Language.Haskell.TH.Syntax as TH
 import System.FilePath
@@ -121,8 +119,8 @@ objc_implementation ann_vars defs
         ; let cannotMapAllTypes = Nothing `elem` (maybe_cResTy : maybe_cArgTys)
               cArgTys           = map maybeErrorCtype maybe_cArgTys
               cResTy            = maybeErrorCtype maybe_cResTy
-        
-        ; if cannotMapAllTypes 
+
+        ; if cannotMapAllTypes
           then do {str <- annotatedShowQ ann_var; reportErrorWithLang ObjC $ "invalid marshalling: " ++ str}
           else do
 
@@ -150,7 +148,7 @@ objc_implementation ann_vars defs
 
             -- Generate the C wrapper code (both prototype and definition)
         ; cArgVars <- mapM (\n -> newName $ "arg" ++ show n) [1..length cBridgeArgTys]
-        ; let cArgVarExps = [ [cexp| $id:(nameBase var) |] | var <- cArgVars]
+        ; let cArgVarExps = [ [cexp| $id:(nameBase var') |] | var' <- cArgVars]
               call        = [cexp| $id:(show hswrapperName) ( $args:cArgVarExps ) |]
               (_wrapperProto, wrapperDef)
                        = generateCWrapper cwrapperName cBridgeArgTys cArgVars cArgMarshallers cArgTys cArgVars
@@ -177,18 +175,18 @@ objc_implementation ann_vars defs
       = ([], [], True, res)
     splitHaskellType res
       = ([], [], False, res)
-    
+
     makeStaticFunc (FuncDef (Func    dspec f decl ps    body loc1) loc2)
       = FuncDef (Func    (addStatic dspec) f decl ps    body loc1) loc2
     makeStaticFunc (FuncDef (OldFunc dspec f decl ps ig body loc1) loc2)
       = FuncDef (OldFunc (addStatic dspec) f decl ps ig body loc1) loc2
     makeStaticFunc def = def
-    
+
     addStatic (DeclSpec         st tqs ts loc) = DeclSpec         (Tstatic loc:st) tqs ts loc
     addStatic (AntiTypeDeclSpec st tqs ts loc) = AntiTypeDeclSpec (Tstatic loc:st) tqs ts loc
     addStatic declSpec                         = declSpec
 
-maybeErrorCtype :: Maybe QC.Type -> QC.Type    
+maybeErrorCtype :: Maybe QC.Type -> QC.Type
 maybeErrorCtype Nothing   = [cty| typename __UNDEFINED_TYPE |]    -- placeholder to make progress in the face of errors
 maybeErrorCtype (Just ty) = ty
 
@@ -206,13 +204,14 @@ data PropertyAccess = QC.ObjCIfaceDecl :==> (TH.TypeQ, TH.ExpQ, TH.ExpQ)
 
 -- |Map a property to explicit projection and update functions.
 --
+(==>) :: ObjCIfaceDecl -> (TypeQ, ExpQ, ExpQ) -> PropertyAccess
 (==>) = (:==>)
 
 -- |Map a property to a field label. This function assumes that the field name is typed and can be reified.
 --
 (-->) :: QC.ObjCIfaceDecl -> Name -> PropertyAccess
-prop --> fieldName = prop ==> (fieldTy, 
-                               [| $(varE fieldName) |], 
+prop --> fieldName = prop ==> (fieldTy,
+                               [| $(varE fieldName) |],
                                [| \s v -> $(recUpdE [|s|] [do { vE <- [|v|]; return (fieldName, vE) }]) |])
   where
     fieldTy
@@ -220,10 +219,10 @@ prop --> fieldName = prop ==> (fieldTy,
         { info <- reify fieldName
         ; case info of
             VarI _ (ArrowT `AppT` _ `AppT` resTy) _ _ -> return resTy
-            nonVarInfo -> 
+            nonVarInfo ->
               do
-              { reportErrorAndFail QC.ObjC $ 
-                  "expected '" ++ show fieldName ++ "' to be a typed record field name, but it is " ++ 
+              { reportErrorAndFail QC.ObjC $
+                  "expected '" ++ show fieldName ++ "' to be a typed record field name, but it is " ++
                   show (TH.ppr nonVarInfo)
               }
         }
@@ -259,9 +258,9 @@ objc_record prefix objcClassName hsTyName ann_vars properties ifaceDecls impDecl
   = do
     {   -- Turn projection and update functions into Haskell top-level function definitions
     ; let (propTys, propProjFuns, propUpdFuns) = unzip3 [(ty, proj, upd) | (_ :==> (ty, proj, upd)) <- properties]
-    ; projNames <- sequence [ return . mkName $ "proj" ++ objcClassName ++ show i | (_, i) <- zip propProjFuns [1..]]
-    ; updNames  <- sequence [ return . mkName $ "upd"  ++ objcClassName ++ show i | (_, i) <- zip propProjFuns [1..]]
-    ; let projUpd_defs = [ funD name [clause [] (normalB propFun) []] 
+    ; projNames <- sequence [ return . mkName $ "proj" ++ objcClassName ++ show i | (_, i) <- zip propProjFuns [(11::Int) ..]]
+    ; updNames  <- sequence [ return . mkName $ "upd"  ++ objcClassName ++ show i | (_, i) <- zip propProjFuns [(11::Int) ..]]
+    ; let projUpd_defs = [ funD name [clause [] (normalB propFun) []]
                          | (name, propFun) <- zip projNames propProjFuns ++ zip updNames propUpdFuns]
 
         -- All new top-level functions are in the set of free variables for the implementation code
@@ -270,13 +269,13 @@ objc_record prefix objcClassName hsTyName ann_vars properties ifaceDecls impDecl
         -- Construct the class interface
     ; let propertyDecls     = [prop | (prop :==> _) <- properties]
           updateMethodDecls = concatMap mkUpdateMethodDecl propertyDecls
-          iface             = [cunit| 
+          iface             = [cunit|
             @interface $id:prefixedClassName : NSObject
-            
+
             $ifdecls:propertyDecls
             $ifdecls:updateMethodDecls
             $ifdecls:ifaceDecls
-            
+
             @end
           |]
 
@@ -287,17 +286,17 @@ objc_record prefix objcClassName hsTyName ann_vars properties ifaceDecls impDecl
             @interface $id:prefixedClassName ()
             @property (readonly, assign, nonatomic) typename HsStablePtr $id:hsPtrName;
             @end
-            
+
             @implementation $id:prefixedClassName
-            
+
             $edecls:updateMethodDefs
             $edecls:impDecls
-            
+
             - (instancetype)init
             {
               return [self $id:initWithHsPtrName:nil];
             }
-            
+
             - (instancetype)$id:initWithHsPtrName:(typename HsStablePtr)$id:hsPtrName
             {
               self = [super init];
@@ -305,7 +304,7 @@ objc_record prefix objcClassName hsTyName ann_vars properties ifaceDecls impDecl
                 $id:("_" ++ hsPtrName) = $id:hsPtrName;
               return self;
             }
-            
+
             - (void)dealloc
             {
               hs_free_stable_ptr($id:("_" ++ hsPtrName));
@@ -315,7 +314,7 @@ objc_record prefix objcClassName hsTyName ann_vars properties ifaceDecls impDecl
 
             @end
           |]
-        
+
         -- Inline the class interface and class implementation; then, return all new Haskell bindings
     ; iface_defs <- objc_interface iface
     ; imp_defs   <- objc_implementation all_ann_vars imp
@@ -325,7 +324,7 @@ objc_record prefix objcClassName hsTyName ann_vars properties ifaceDecls impDecl
   where
     addProjType name ty = name :> [t| $(conT hsTyName) -> $ty |]
     addUpdType  name ty = name :> [t| $(conT hsTyName) -> $ty -> $(conT hsTyName) |]
-    
+
     prefixedClassName = prefix ++ objcClassName
     lowerClassName    = toLower (head objcClassName) : tail objcClassName
     hsTyNameBase      = nameBase hsTyName
@@ -333,23 +332,23 @@ objc_record prefix objcClassName hsTyName ann_vars properties ifaceDecls impDecl
     hsPtrName         = lowerHsTyName ++ "HsPtr"
     initWithHsPtrName = "initWith" ++ hsTyNameBase ++ "HsPtr"
 
-    mkUpdateMethodDecl propDecl@(ObjCIfaceProp _attrs 
+    mkUpdateMethodDecl (ObjCIfaceProp _attrs
                                    (FieldGroup spec [Field (Just (Id propName _)) (Just decl) _exp _] loc)
                                    _)
-      = [objcifdecls| 
-          + (instancetype)$id:lowerClassName:(typename $id:prefixedClassName *)$id:lowerClassName 
-                          $id:("with" ++ upperPropName):($ty:propTy)$id:propName; 
+      = [objcifdecls|
+          + (instancetype)$id:lowerClassName:(typename $id:prefixedClassName *)$id:lowerClassName
+                          $id:("with" ++ upperPropName):($ty:propTy)$id:propName;
         |]
       where
         upperPropName = toUpper (head propName) : tail propName
         propTy        = QC.Type spec decl loc
-    
-    mkUpdateMethodDef propDecl@(ObjCIfaceProp _attrs 
+
+    mkUpdateMethodDef (ObjCIfaceProp _attrs
                                   (FieldGroup spec [Field (Just (Id propName _)) (Just decl) _exp _] loc)
                                   _)
                       updName
-      = [objcimdecls| 
-          + (instancetype)$id:lowerClassName:(typename $id:prefixedClassName *)$id:lowerClassName 
+      = [objcimdecls|
+          + (instancetype)$id:lowerClassName:(typename $id:prefixedClassName *)$id:lowerClassName
                           $id:("with" ++ upperPropName):($ty:propTy)$id:propName
           {
             return [[$id:prefixedClassName alloc] $id:initWithHsPtrName:$id:(show updName)($id:lowerClassName.$id:hsPtrName,
@@ -360,11 +359,11 @@ objc_record prefix objcClassName hsTyName ann_vars properties ifaceDecls impDecl
         upperPropName = toUpper (head propName) : tail propName
         propTy        = QC.Type spec decl loc
 
-    mkProjectionMethodDef propDecl@(ObjCIfaceProp _attrs 
+    mkProjectionMethodDef (ObjCIfaceProp _attrs
                                       (FieldGroup spec [Field (Just (Id propName _)) (Just decl) _exp _] loc)
                                       _)
                           updName
-      = [objcimdecls| 
+      = [objcimdecls|
           - ($ty:propTy)$id:propName
           {
             return $id:(show updName)(self.$id:hsPtrName);
@@ -385,9 +384,9 @@ objc_marshaller haskellToObjCName objcToHaskellName
     ; (hsTy1, classTy1) <- argAndResultTy haskellToObjCName
     ; (classTy2, hsTy2) <- argAndResultTy objcToHaskellName
     ; unless (hsTy1 == hsTy2 && classTy1 == classTy2) $
-        reportErrorAndFail QC.ObjC $ 
+        reportErrorAndFail QC.ObjC $
           "the two marshallers must map between the same types"
-    
+
     ; tyconName <- headTyConNameOrError QC.ObjC classTy1
     ; let cTy = [cty| typename $id:(nameBase tyconName) * |]
     ; stashMarshaller (hsTy1, classTy1, cTy, haskellToObjCName, objcToHaskellName)
@@ -401,9 +400,9 @@ objc_marshaller haskellToObjCName objcToHaskellName
             VarI _ (ArrowT `AppT` argTy `AppT` (ConT io `AppT` resTy)) _ _
               | io == ''IO
               -> return (argTy, resTy)
-            VarI _ ty _ _ -> reportErrorAndFail QC.ObjC $ 
+            VarI _ _ _ _ -> reportErrorAndFail QC.ObjC $
                                show name ++ "'s type must match 'a -> IO r'"
-            other         -> reportErrorAndFail QC.ObjC $ 
+            _            -> reportErrorAndFail QC.ObjC $
                                show name ++ " must be a function"
         }
 
@@ -427,11 +426,11 @@ objc ann_vars ann_e
     ; let cannotMapAllTypes = Nothing `elem` (maybe_cResTy : maybe_cArgTys)
           cArgTys           = map maybeErrorCtype maybe_cArgTys
           cResTy            = maybeErrorCtype maybe_cResTy
-    
+
     ; if cannotMapAllTypes
       then failOn [ann_var | (ann_var, Nothing) <- zip ann_vars maybe_cArgTys] maybe_cResTy
       else do
-    
+
     {   -- Determine the bridging type and the marshalling code
     ; (bridgeArgTys, cBridgeArgTys, hsArgMarshallers, cArgMarshallers) <-
         unzip4 <$> zipWithM generateHaskellToCMarshaller varTys cArgTys
@@ -468,7 +467,7 @@ objc ann_vars ann_e
                  (error "InlineObjC: INTERNAL ERROR: type mismatch in jumptable")
                :: $ty |]
            }
-           
+
     failOn err_ann_vars maybe_cResTy
       = do
         { unless (null err_ann_vars) $ do
@@ -481,12 +480,12 @@ objc ann_vars ann_e
             }
         ; [| error "error in inline Objective-C expression" |]
         }
-        
-    annotatedHaskellTypeToCType ann_e
+
+    annotatedHaskellTypeToCType ann
       = do
-        { maybe_objcType <- foreignTypeOf ann_e
+        { maybe_objcType <- foreignTypeOf ann
         ; case maybe_objcType of
-            Nothing       -> haskellTypeOf ann_e >>= haskellTypeToCType ObjC
+            Nothing       -> haskellTypeOf ann >>= haskellTypeToCType ObjC
             Just objcType -> return $ Just objcType
         }
 
@@ -615,7 +614,7 @@ objc_emit
                  \//   by package 'language-c-inline'\n\n"
 
 -- |Force type checking of all declaration appearing earlier in this module.
--- 
+--
 -- Template Haskell performs type checking on declaration groups seperated by toplevel splices. In order for a type
 -- declaration to be available to an Objective-C inline directive, the type declaration must be in an earlier
 -- declaration group than the Objective-C inline directive. A toplevel Objective-C inline directive always is the start

@@ -26,21 +26,17 @@ module Language.C.Inline.C.Marshal (
 
   -- common libraries
 import Data.Map                   as Map
-import Data.Maybe
 import Data.Word
 import Foreign.C                  as C
-import Foreign.C.String           as C
 import Foreign.Marshal            as C
 import Foreign.Ptr                as C
 import Foreign.ForeignPtr         as C
 import Foreign.StablePtr          as C
 import Language.Haskell.TH        as TH
-import Language.Haskell.TH.Syntax as TH
 
   -- quasi-quotation libraries
 import Language.C.Quote           as QC
 import Language.C.Quote.C         as QC
-import Text.PrettyPrint.Mainland  as QC
 
   -- friends
 import Language.C.Inline.Error
@@ -64,31 +60,31 @@ haskellTypeToCType lang ty
         Nothing                -> haskellTypeToCType' lang ty  -- otherwise, continue below...
     }
   where
-    haskellTypeToCType' lang (ListT `AppT` (ConT char))        -- marshal '[Char]' as 'String'
-      | char == ''Char
-      = haskellTypeNameToCType lang ''String
-    haskellTypeToCType' lang ty@(ConT maybeC `AppT` argTy)     -- encode a 'Maybe' around a pointer type in the pointer
+    haskellTypeToCType' lang' (ListT `AppT` (ConT ch))        -- marshal '[Char]' as 'String'
+      | ch == ''Char
+      = haskellTypeNameToCType lang' ''String
+    haskellTypeToCType' lang' ty'@(ConT maybeC `AppT` argTy)     -- encode a 'Maybe' around a pointer type in the pointer
       | maybeC == ''Maybe
       = do
-        { cargTy <- haskellTypeToCType lang argTy
+        { cargTy <- haskellTypeToCType lang' argTy
         ; if fmap isCPtrType cargTy == Just True
           then
             return cargTy
           else
-            unknownType lang ty
+            unknownType lang' ty'
         }
-    haskellTypeToCType' lang (ConT tc)                         -- nullary type constructors are delegated
-      = haskellTypeNameToCType lang tc
-    haskellTypeToCType' lang ty@(VarT tv)                      -- can't marshal an unknown type
-      = unknownType lang ty
-    haskellTypeToCType' lang ty@(UnboxedTupleT _)              -- there is nothing like unboxed tuples in C
-      = unknownType lang ty
-    haskellTypeToCType' _lang ty                               -- everything else is marshalled as a stable pointer
+    haskellTypeToCType' lang' (ConT tc)                         -- nullary type constructors are delegated
+      = haskellTypeNameToCType lang' tc
+    haskellTypeToCType' lang' ty'@(VarT _)                      -- can't marshal an unknown type
+      = unknownType lang' ty'
+    haskellTypeToCType' lang' ty'@(UnboxedTupleT _)              -- there is nothing like unboxed tuples in C
+      = unknownType lang' ty'
+    haskellTypeToCType' _lang _ty                               -- everything else is marshalled as a stable pointer
       = return $ Just [cty| typename HsStablePtr |]
 
-    unknownType lang ty
+    unknownType lang' _ty
       = do
-        { reportErrorWithLang lang $ "don't know a foreign type suitable for Haskell type '" ++ TH.pprint ty ++ "'"
+        { reportErrorWithLang lang' $ "don't know a foreign type suitable for Haskell type '" ++ TH.pprint ty ++ "'"
         ; return Nothing
         }
 
@@ -101,7 +97,7 @@ haskellTypeToCType lang ty
 haskellTypeNameToCType :: QC.Extensions -> TH.Name -> Q (Maybe QC.Type)
 haskellTypeNameToCType ext tyname
   = case Map.lookup tyname (haskellToCTypeMap ext) of
-      Just cty -> return $ Just cty
+      Just cty' -> return $ Just cty'
       Nothing  -> do
         { info <- reify tyname
         ; case info of
@@ -211,8 +207,8 @@ generateHaskellToCMarshaller hsTy cTy@(Type (DeclSpec _ _ (Tnamed (Id name _) _ 
 generateHaskellToCMarshaller hsTy cTy = generateHaskellToCMarshaller' hsTy cTy
 
 generateHaskellToCMarshaller' :: TH.Type -> QC.Type -> Q (TH.TypeQ, QC.Type, HaskellMarshaller, CMarshaller)
-generateHaskellToCMarshaller' hsTy@(ConT maybe `AppT` argTy) cTy
-  | maybe == ''Maybe && isCPtrType cTy
+generateHaskellToCMarshaller' hsTy@(ConT mbe `AppT` argTy) cTy
+  | mbe == ''Maybe && isCPtrType cTy
   = do
     { (argTy', cTy', hsMarsh, cMarsh) <- generateHaskellToCMarshaller argTy cTy
     ; ty <- argTy'
@@ -329,8 +325,8 @@ generateCToHaskellMarshaller hsTy cTy@(Type (DeclSpec _ _ (Tnamed (Id name _) _ 
 generateCToHaskellMarshaller hsTy cTy = generateCToHaskellMarshaller' hsTy cTy
 
 generateCToHaskellMarshaller' :: TH.Type -> QC.Type -> Q (TH.TypeQ, QC.Type, HaskellMarshaller, CMarshaller)
-generateCToHaskellMarshaller' hsTy@(ConT maybe `AppT` argTy) cTy
-  | maybe == ''Maybe && isCPtrType cTy
+generateCToHaskellMarshaller' hsTy@(ConT mbe `AppT` argTy) cTy
+  | mbe == ''Maybe && isCPtrType cTy
   = do
     { (argTy', cTy', hsMarsh, cMarsh) <- generateCToHaskellMarshaller argTy cTy
     ; ty <- argTy'
@@ -435,6 +431,8 @@ generateCToHaskellMarshaller' hsTy cTy
   | otherwise
   = reportErrorAndFail C11 $ "cannot marshall '" ++ prettyQC cTy ++ "' to '" ++ TH.pprint hsTy ++ "'"
 
+
+cIntegralMap :: Map QC.Type TypeQ
 cIntegralMap = Map.fromList
                [ ([cty| char |],                [t| C.CChar |])
                , ([cty| signed char |],         [t| C.CChar |])
@@ -449,6 +447,7 @@ cIntegralMap = Map.fromList
                , ([cty| unsigned long long |],  [t| C.CULLong |])
                ]
 
+cFloatingMap :: Map QC.Type TypeQ
 cFloatingMap = Map.fromList
                [ ([cty| float |] , [t| C.CFloat |])
                , ([cty| double |], [t| C.CDouble |])

@@ -18,7 +18,6 @@ module Language.C.Inline.C.Hint (
 
   -- standard libraries
 import Language.Haskell.TH        as TH
-import Language.Haskell.TH.Syntax as TH
 
   -- quasi-quotation libraries
 import Language.C.Quote           as QC
@@ -67,7 +66,7 @@ instance Hint Class where
   haskellType (Class tyish)
     = do
       { ty <- theType tyish
-      ; foreignWrapperDatacon ty      -- FAILS if the declaration is not a 'ForeignPtr' wrapper
+      ; _ <- foreignWrapperDatacon ty      -- FAILS if the declaration is not a 'ForeignPtr' wrapper
       ; return ty
       }
   foreignType (Class tyish)
