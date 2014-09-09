@@ -1,5 +1,6 @@
 *.o
 *.hi
+*.dyn_*
 
 /dist/
 tests/objc/InlineObjC
@@ -69,3 +70,6 @@ tests/objc/marshal-array/Main_objc.h
 tests/objc/marshal-array/Main_objc.m
 
 tests/objc/marshal-array/MarshalArray
+
+*_c.[ch]
+testsuite

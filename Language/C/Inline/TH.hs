@@ -14,7 +14,7 @@
 module Language.C.Inline.TH (
   -- * Decompose type expressions
   headTyConName, headTyConNameOrError,
-  
+
   -- * Decompose idiomatic declarations
   foreignWrapperDatacon, ptrOfForeignPtrWrapper, unwrapForeignPtrWrapper
 ) where
@@ -24,7 +24,6 @@ import Control.Applicative
 import Foreign.Ptr
 import Foreign.ForeignPtr
 import Language.Haskell.TH        as TH
-import Language.Haskell.TH.Syntax as TH
 
   -- quasi-quotation libraries
 import Language.C.Quote           as QC
@@ -64,7 +63,7 @@ splitAppTy = split []
 --
 foreignWrapperDatacon :: TH.Type -> Q TH.Exp
 foreignWrapperDatacon ty
-  = do 
+  = do
     { (datacon, _) <- decomposeForeignPtrWrapper ty
     ; return $ ConE datacon
     }
@@ -77,7 +76,7 @@ ptrOfForeignPtrWrapper ty = [t| Ptr $(snd <$> decomposeForeignPtrWrapper ty) |]
 -- |Generate code that unwraps the foreign pointer inside the given foreign pointer wrapper type.
 --
 unwrapForeignPtrWrapper :: TH.Type -> Q TH.Exp
-unwrapForeignPtrWrapper ty 
+unwrapForeignPtrWrapper ty
   = do
     { (datacon, _) <- decomposeForeignPtrWrapper ty
     ; v <- newName "v"
@@ -93,57 +92,57 @@ unwrapForeignPtrWrapper ty
 --
 decomposeForeignPtrWrapper :: TH.Type -> Q (TH.Name, TH.Type)
 decomposeForeignPtrWrapper ty
-  = do 
+  = do
     { let (tycon, args) = splitAppTy ty
     ; name <- case tycon of
                 ConT name -> return name
-                _         -> 
+                _         ->
                   do
-                  { reportErrorAndFail QC.ObjC $ 
+                  { reportErrorAndFail QC.ObjC $
                       "expected '" ++ show tycon ++ "' be a type constructor of a 'ForeignPtr' wrapper"
                   }
 
     ; info <- reify name
     ; case info of
-        TyConI (NewtypeD [] _name tvs (NormalC dataconName [(_strict, ConT fptr `AppT` ptrArg)]) _deriv) 
+        TyConI (NewtypeD [] _name tvs (NormalC dataconName [(_strict, ConT fptr `AppT` ptrArg)]) _deriv)
           | fptr == ''ForeignPtr
           -> return (dataconName, substitute (zip args tvs) ptrArg)
-        nonForeign -> 
+        nonForeign ->
           do
-          { reportErrorAndFail QC.ObjC $ 
-              "expected '" ++ show name ++ "' to refer to a 'ForeignPtr' wrapped into a newtype, but it is " ++ 
+          { reportErrorAndFail QC.ObjC $
+              "expected '" ++ show name ++ "' to refer to a 'ForeignPtr' wrapped into a newtype, but it is " ++
               show (TH.ppr nonForeign)
           }
     }
   where
     substitute :: [(TH.Type, TH.TyVarBndr)] -> TH.Type -> TH.Type
-    substitute subst (ForallT boundTvs cxt body)
-      = ForallT boundTvs (substituteCxt subst' cxt) (substitute subst' body)
+    substitute subst (ForallT boundTvs cxt' body)
+      = ForallT boundTvs (substituteCxt subst' cxt') (substitute subst' body)
       where
         subst' = filter (`notShadowedBy` map theTV boundTvs) subst
         --
-        (_, tv) `notShadowedBy` boundTvs = theTV tv `notElem` boundTvs
+        (_, tv) `notShadowedBy` boundTvs' = theTV tv `notElem` boundTvs'
         --
         theTV (PlainTV tv)    = tv
         theTV (KindedTV tv _) = tv
     substitute subst (t1 `AppT` t2)
       = (substitute subst t1) `AppT` (substitute subst t2)
-    substitute subst (SigT ty ki)
-      = SigT (substitute subst ty) ki
+    substitute subst (SigT ty' ki)
+      = SigT (substitute subst ty') ki
     substitute subst (VarT tv)
       = substituteName subst tv
-    substitute _subst ty
-      = ty
-    
-    substituteCxt subst cxt = map (substitutePred subst) cxt
-    
+    substitute _subst ty'
+      = ty'
+
+    substituteCxt subst cxt' = map (substitutePred subst) cxt'
+
     substitutePred subst (ClassP name tys) = ClassP name (map (substitute subst) tys)
     substitutePred subst (EqualP ty1 ty2)  = EqualP (substitute subst ty1) (substitute subst ty2)
-    
+
     substituteName []               tv     = VarT tv
-    substituteName ((arg, tv):args) thisTv
+    substituteName ((arg, tv):_args) thisTv
       | tv `matches` thisTv = arg
       | otherwise           = VarT thisTv
-      
+
     PlainTV  name     `matches` thisTv = name == thisTv
     KindedTV name _ki `matches` thisTv = name == thisTv

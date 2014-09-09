@@ -23,18 +23,16 @@ module Language.C.Inline.Error (
 ) where
 
 import Language.Haskell.TH        as TH
-import Language.Haskell.TH.Syntax as TH
 
   -- quasi-quotation libraries
 import Language.C.Quote           as QC
-import Language.C.Quote.ObjC      as QC
 import Text.PrettyPrint.Mainland  as QC
 
 
 reportErrorWithLang :: QC.Extensions -> String -> Q ()
 reportErrorWithLang lang msg
   = do
-    { loc <- location
+    { _loc <- location
     -- FIXME: define a Show instance for 'Loc' and use it to prefix position to error
     ; TH.reportError $ "Inline " ++ showLang lang ++ ": " ++ msg
     }
@@ -60,6 +58,7 @@ reportErrorAndFail' msg
 
 showLang :: QC.Extensions -> String
 showLang QC.Antiquotation = "C"
+showLang QC.C11           = "C 11"
 showLang QC.Gcc           = "GCC C"
 showLang QC.CUDA          = "CUDA C"
 showLang QC.OpenCL        = "OpenCL"
