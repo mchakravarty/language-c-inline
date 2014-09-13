@@ -6,6 +6,11 @@ module Test.PosixC
     , cGetString
     , cPassString
 
+    , cSin
+    , cSinF
+    , cInvertSin
+    , cInvertSinF
+
     -- The module initialisation function.
     , posixCInit
     ) where
@@ -16,7 +21,7 @@ import Language.C.Inline.C
 
 import Language.Haskell.TH
 
-c_import ["<stdio.h>", "<ctype.h>"]
+c_import ["<stdio.h>", "<ctype.h>", "<math.h>"]
 
 cPlusOne :: Int -> IO Int
 cPlusOne i = $(c [ 'i :> ''Int ] (''Int <: [cexp| (i + 1) |]))
@@ -37,6 +42,17 @@ cGetString = $(c [] (''String <: [cexp| "Hello Haskell" |]))
 cPassString :: String -> IO String
 cPassString msg = $(c [ 'msg :> ''String ] (''String <: [cexp| msg |]))
 
+cSin :: Double -> IO Double
+cSin x = $(c [ 'x :> ''Double ] (''Double <: [cexp| sin(x) |]))
+
+cSinF :: Float -> IO Float
+cSinF x = $(c [ 'x :> ''Float ] (''Float <: [cexp| sinf(x) |]))
+
+cInvertSin :: Double -> IO Double
+cInvertSin x = $(c [ 'x :> ''Double ] (''Double <: [cexp| sin(asin(x)) |]))
+
+cInvertSinF :: Float -> IO Float
+cInvertSinF x = $(c [ 'x :> ''Float ] (''Float <: [cexp| sinf(asinf(x)) |]))
 
 c_emit
 
