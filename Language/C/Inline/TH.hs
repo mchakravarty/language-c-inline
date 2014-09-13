@@ -1,4 +1,4 @@
-{-# LANGUAGE TemplateHaskell, GADTs, FlexibleInstances #-}
+{-# LANGUAGE TemplateHaskell, GADTs, FlexibleInstances, ViewPatterns #-}
 
 -- |
 -- Module      : Language.C.Inline.TH
@@ -102,19 +102,27 @@ decomposeForeignPtrWrapper ty
                       "expected '" ++ show tycon ++ "' be a type constructor of a 'ForeignPtr' wrapper"
                   }
 
-    ; info <- reify name
-    ; case info of
-        TyConI (NewtypeD [] _name tvs (NormalC dataconName [(_strict, ConT fptr `AppT` ptrArg)]) _deriv)
-          | fptr == ''ForeignPtr
-          -> return (dataconName, substitute (zip args tvs) ptrArg)
-        nonForeign ->
-          do
-          { reportErrorAndFail QC.ObjC $
-              "expected '" ++ show name ++ "' to refer to a 'ForeignPtr' wrapped into a newtype, but it is " ++
-              show (TH.ppr nonForeign)
-          }
+    ; reifyUntilFixedPoint args name
     }
   where
+    reifyUntilFixedPoint args name
+      = do 
+        { info <- reify name
+        ; case info of
+            TyConI (NewtypeD [] _name tvs (NormalC dataconName [(_strict, ConT fptr `AppT` ptrArg)]) _deriv)
+              | fptr == ''ForeignPtr
+              -> return (dataconName, substitute (zip args tvs) ptrArg)
+            TyConI (TySynD _name tvs (headTyConName -> Just name'))
+              -> do
+                 { (dcname, type0) <- reifyUntilFixedPoint (drop (length tvs) args) name'
+                 ; return (dcname, substitute (zip args tvs) type0)
+                 }
+            nonForeign -> 
+              do
+              { reportErrorAndFail QC.ObjC $
+                  "expected '" ++ show name ++ "' to refer to a 'ForeignPtr' wrapped into a newtype, but it is " ++
+                  show (TH.ppr nonForeign)
+              }        }
     substitute :: [(TH.Type, TH.TyVarBndr)] -> TH.Type -> TH.Type
     substitute subst (ForallT boundTvs cxt' body)
       = ForallT boundTvs (substituteCxt subst' cxt') (substitute subst' body)
