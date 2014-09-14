@@ -48,7 +48,12 @@ class EqualIsh a where
     (/=~) a b = not $ a =~ b
 
 instance EqualIsh a => EqualIsh [a] where
-    as =~ bs = and $ zipWith (=~) as bs
+    (=~) = go
+        where
+          go [] [] = True
+          go (a:as) (b:bs) | a =~ b    = go as bs
+                           | otherwise = False
+          go _ _ = False
 
 -- | This is a very naive definition of approximate
 --   eqaulity (absolute difference within 1e-15;
