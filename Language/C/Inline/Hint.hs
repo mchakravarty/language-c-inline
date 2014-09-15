@@ -36,9 +36,12 @@ import Language.C.Inline.Error
 
 -- |Annotating entities with hints.
 --
+-- The alternatives are to provide an explicit marshalling hint with '(:>)', or to leave the marshalling
+-- implicitly defined by the name's type.
+--
 data Annotated e where
-  (:>)  :: Hint hint => e    -> hint -> Annotated e         -- ^explicit marshalling hint
-  Typed ::              Name         -> Annotated Name      -- ^marshalling implicitly defined by name's type
+  (:>)  :: Hint hint => e    -> hint -> Annotated e         -- explicit marshalling hint
+  Typed ::              Name         -> Annotated Name      -- marshalling implicitly defined by name's type
 
 -- |We provide additional syntax where the hint is to the left of the annotated entity.
 --
