@@ -14,8 +14,9 @@
 module Language.C.Inline.State (
   -- * Abstract application state
   State,
+  initialiseState,
   
-  -- * State query and update operations
+  -- ** State query and update operations
   setForeignTable, stashHeader, stashMarshaller, stashObjC_h, stashObjC_m, stashHS, 
   extendJumpTable,
   getForeignTable, getForeignLabels, getHeaders, getMarshallers, lookupMarshaller, getHoistedObjC, getHoistedHS
@@ -53,16 +54,22 @@ data State
 state :: IORef State
 {-# NOINLINE state #-}
 state = unsafePerformIO $ 
-          newIORef $ 
-            State
-            { foreignTable  = error "Language.C.Inline.State: internal error: 'foreignTable' undefined"
-            , foreignLabels = []
-            , headers       = []
-            , marshallers   = []
-            , hoistedObjC_h = []
-            , hoistedObjC_m = []
-            , hoistedHS     = []
-            }
+          newIORef initialState
+
+initialState :: State
+initialState 
+  = State
+    { foreignTable  = error "Language.C.Inline.State: internal error: 'foreignTable' undefined"
+    , foreignLabels = []
+    , headers       = []
+    , marshallers   = []
+    , hoistedObjC_h = []
+    , hoistedObjC_m = []
+    , hoistedHS     = []
+    }
+    
+initialiseState :: Q ()
+initialiseState = modifyState (const initialState)
 
 readState :: (State -> a) -> Q a
 readState read = runIO $ read <$> readIORef state

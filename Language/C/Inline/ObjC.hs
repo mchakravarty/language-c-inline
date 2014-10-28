@@ -65,12 +65,17 @@ import Language.C.Inline.ObjC.Marshal
 -- |Specify imported Objective-C files. Needs to be spliced where an import declaration can appear. (Just put it
 -- straight after all the import statements in the module.)
 --
+-- NB: This inline splice must appear before any other use of inline code in a module.
+--
 -- FIXME: need to use TH.addDependentFile on each of the imported ObjC files & read headers
 --
 objc_import :: [FilePath] -> Q [TH.Dec]
 objc_import headers
   = do
-    { mapM_ stashHeader headers
+    {   -- explicitly initialise the state as we can run multiple times in a --make compile
+    ; initialiseState
+
+    ; mapM_ stashHeader headers
     ; objc_jumptable <- newName "objc_jumptable"
     ; setForeignTable $ varE objc_jumptable
     ; sequence $ [ sigD objc_jumptable [t|IORef (Array Int Dynamic)|]
