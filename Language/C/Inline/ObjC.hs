@@ -588,8 +588,9 @@ objc_emit
           objcFname   = dropExtension origFname ++ "_objc"
           objcFname_h = objcFname `addExtension` "h"
           objcFname_m = objcFname `addExtension` "m"
-    ; headers          <- getHeaders
+    ; allHeaders       <- getHeaders
     ; (objc_h, objc_m) <- getHoistedObjC
+    ; let (hsFFIHeader, headers) = separateHsFFI allHeaders
     ; runIO $
         do
         { writeFile  objcFname_h (info origFname)
@@ -597,7 +598,7 @@ objc_emit
         ; appendFile objcFname_h (show $ QC.ppr objc_h)
         ; writeFile  objcFname_m (info origFname)
         ; appendFile objcFname_m ("#import \"" ++ takeFileName objcFname_h ++ "\"\n")
-        ; appendFile objcFname_m ("#import \"HsFFI.h\"\n\n")
+        ; appendFile objcFname_m (mkImport hsFFIHeader ++ "\n\n")
         ; appendFile objcFname_m (show $ QC.ppr objc_m)
         }
     ; objc_jumptable <- getForeignTable
@@ -612,6 +613,16 @@ objc_emit
     ; (initialize ++) <$> getHoistedHS
     }
   where
+    hsFFI = "HsFFI.h"     -- Haskell C FFI header as prescribed in the standard
+    
+      -- If the user supplies the FFI header (presumably at a non-standard location), use that; otherwise, we include
+      -- the header without a path. (The FFI header should by default only be included into the .m file; otherwise, we
+      -- get into problems with framework modules.)
+    separateHsFFI headers
+      = case break ((== hsFFI) . takeFileName) headers of
+          (before, [])        -> (hsFFI, before)
+          (before, ffi:after) -> (ffi, before ++ after)
+    
     mkImport h@('<':_) = "#import " ++ h ++ ""
     mkImport h         = "#import \"" ++ h ++ "\""
 
