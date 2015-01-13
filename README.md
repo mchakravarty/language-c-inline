@@ -3,7 +3,7 @@ Inline C &amp; Objective-C in Haskell
 
 This library uses Template Haskell and `language-c-quote`, a quasi-quotation library for C-like languages, to provide inline C and Objective-C in Haskell. It extracts the C/Objective-C code automatically, when compiling the Haskell program, and generates marshalling code for common types. The wiki on GitHub details the [motivation](https://github.com/mchakravarty/language-c-inline/wiki/Motivation) for this approach.
 
-For further motivation, have a look at the slides of my YOW! Lambda Jam 2014 talk [Foreign Inline Code in Haskell](https://speakerdeck.com/mchakravarty/foreign-inline-code-in-haskell).
+For further motivation, you might like to watch the [YouTube video](http://www.youtube.com/watch?v=pm_WFnWqn20) (matching [slides](https://speakerdeck.com/mchakravarty/foreign-inline-code-in-haskell-haskell-symposium-2014)) of my talk at the Haskell Symposium 2014 (Gothenburg, Sweden), or look at the slides of my YOW! Lambda Jam 2014 talk [Foreign Inline Code in Haskell](https://speakerdeck.com/mchakravarty/foreign-inline-code-in-haskell).
 
 Building
 --------
