@@ -69,3 +69,9 @@ tests/objc/marshal-array/Main_objc.h
 tests/objc/marshal-array/Main_objc.m
 
 tests/objc/marshal-array/MarshalArray
+
+tests/objc/simple/Main_objc.h
+
+tests/objc/simple/Main_objc.m
+
+tests/objc/simple/Simple

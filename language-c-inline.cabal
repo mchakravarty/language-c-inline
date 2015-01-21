@@ -1,7 +1,7 @@
 Name:                   language-c-inline
-Version:                0.7.7.0
+Version:                0.7.8.0
 Cabal-version:          >= 1.9.2
-Tested-with:            GHC == 7.6.3, GHC == 7.8.2
+Tested-with:            GHC == 7.6.3, GHC == 7.8.3
 Build-type:             Simple
 
 Synopsis:               Inline C & Objective-C code in Haskell for language interoperability
@@ -16,10 +16,10 @@ Description:            This library provides inline C & Objective-C code using 
                         .
                         Known bugs: <https://github.com/mchakravarty/language-c-inline/issues>
                         .
-                        * New in 0.7.6: (1) Record marshalling; (2) foreign pointer-class marshalling; (3) custom type
-                        marshallers. Generated _objc.m files now always include "HsFFI.h" (as the tool can generate type names
-                        declared in that header). Marshals 'Bool' as 'BOOL'. Marshal 'Int' and 'Word' to 'NSInteger' and
-                        'NSUInteger', respectively.
+                        * New in 0.7.8: (1) Record marshalling; (2) foreign pointer-class marshalling; (3) custom type
+                        marshallers; (4) marshall raw pointer types. Generated _objc.m files now always include "HsFFI.h"
+                        (as the tool can generate type names declared in that header). Marshals 'Bool' as 'BOOL'. Marshal 'Int'
+                        and 'Word' to 'NSInteger' and 'NSUInteger', respectively.
                         .
                         * New in 0.6.0: Introduction of explicit marshalling hints (for more flexibility and support of
                         GHC 7.8's untyped Template Haskell quotations)
