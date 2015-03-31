@@ -1,5 +1,5 @@
 Name:                   language-c-inline
-Version:                0.7.9.0
+Version:                0.7.9.1
 Cabal-version:          >= 1.9.2
 Tested-with:            GHC == 7.6.3, GHC == 7.8.3
 Build-type:             Simple
@@ -80,7 +80,7 @@ Library
                         base              >= 4.0 && < 5,
                         containers        >= 0.4,
                         filepath          >= 1.2,
-                        language-c-quote  >= 0.8,
+                        language-c-quote  >= 0.8 && < 0.9,
                         mainland-pretty   >= 0.2.5,
                         template-haskell
 

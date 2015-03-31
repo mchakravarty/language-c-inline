@@ -449,7 +449,7 @@ objc ann_vars ann_e
         -- FFI setup for the C wrapper
     ; loc <- location
     ; let modName = dropExtension . takeFileName . loc_filename $ loc
-    ; cwrapperName <- show <$> newName (modName ++ "_cwrapper") >>= newName   -- Don't ask...
+    ; cwrapperName <- show <$> newName ("cwrapper_" ++ modName) >>= newName   -- Don't ask...
     ; stashHS
         [ forImpD CCall Safe (show cwrapperName) cwrapperName hsWrapperTy
         ]
