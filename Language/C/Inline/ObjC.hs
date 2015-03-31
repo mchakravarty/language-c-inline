@@ -447,7 +447,9 @@ objc ann_vars ann_e
     ; let hsWrapperTy = haskellWrapperType [] bridgeArgTys bridgeResTy
 
         -- FFI setup for the C wrapper
-    ; cwrapperName <- show <$> newName "cwrapper" >>= newName   -- Don't ask...
+    ; loc <- location
+    ; let modName = dropExtension . takeFileName . loc_filename $ loc
+    ; cwrapperName <- show <$> newName (modName ++ "_cwrapper") >>= newName   -- Don't ask...
     ; stashHS
         [ forImpD CCall Safe (show cwrapperName) cwrapperName hsWrapperTy
         ]

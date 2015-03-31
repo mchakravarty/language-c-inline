@@ -1,5 +1,5 @@
 Name:                   language-c-inline
-Version:                0.7.8.0
+Version:                0.7.9.0
 Cabal-version:          >= 1.9.2
 Tested-with:            GHC == 7.6.3, GHC == 7.8.3
 Build-type:             Simple
@@ -15,6 +15,8 @@ Description:            This library provides inline C & Objective-C code using 
                         For more information, see <https://github.com/mchakravarty/language-c-inline/wiki>.
                         .
                         Known bugs: <https://github.com/mchakravarty/language-c-inline/issues>
+                        .
+                        * New in 0.7.9: C wrapper names include the filename to disambiguate linker symbols.
                         .
                         * New in 0.7.8: (1) Record marshalling; (2) foreign pointer-class marshalling; (3) custom type
                         marshallers; (4) marshall raw pointer types. Generated _objc.m files now always include "HsFFI.h"
