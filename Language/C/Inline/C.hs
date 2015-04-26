@@ -64,7 +64,10 @@ import Language.C.Inline.C.Marshal
 c_import :: [FilePath] -> Q [TH.Dec]
 c_import headers
   = do
-    { mapM_ stashHeader headers
+    {   -- explicitly initialise the state as we can run multiple times in a --make compile
+    ; initialiseState
+
+    ; mapM_ stashHeader headers
     ; c_jumptable <- newName "c_jumptable"
     ; setForeignTable $ varE c_jumptable
     ; sequence $ [ sigD c_jumptable [t|IORef (Array Int Dynamic)|]
