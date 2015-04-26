@@ -1,7 +1,7 @@
 {-# LANGUAGE PatternGuards, TemplateHaskell, QuasiQuotes #-}
 
 -- |
--- Module      : Language.C.Inline.ObjC.Marshal
+-- Module      : Language.C.Inline.C.Marshal
 -- Copyright   : [2013] Manuel M T Chakravarty
 -- License     : BSD3
 --
@@ -9,11 +9,11 @@
 -- Stability   : experimental
 -- Portability : non-portable (GHC extensions)
 --
--- Objective-C-specific marshalling functions.
+-- C-specific marshalling functions.
 --
--- FIXME: Some of the code can go into a module for general marshalling, as only some of it is ObjC-specific.
+-- FIXME: Some of the code can go into a module for general marshalling, as only some of it is C-specific.
 
-module Language.C.Inline.ObjC.Marshal (
+module Language.C.Inline.C.Marshal (
   -- * Determine corresponding foreign types of Haskell types
   haskellTypeToCType,
 
@@ -36,7 +36,7 @@ import Language.Haskell.TH        as TH
 
   -- quasi-quotation libraries
 import Language.C.Quote           as QC
-import Language.C.Quote.ObjC      as QC
+import Language.C.Quote.C         as QC
 
   -- friends
 import Language.C.Inline.Error
@@ -66,32 +66,25 @@ haskellTypeToCType lang ty
     haskellTypeToCType' lang' ty'@(ConT maybeC `AppT` argTy)     -- encode a 'Maybe' around a pointer type in the pointer
       | maybeC == ''Maybe
       = do
-        { cargTy <- haskellTypeToCType lang argTy
+        { cargTy <- haskellTypeToCType lang' argTy
         ; if fmap isCPtrType cargTy == Just True
           then
             return cargTy
           else
             unknownType lang' ty'
         }
-    haskellTypeToCType' lang ty@(ConT ptrC `AppT` argTy)       -- pass vanilla pointers through (as per FFI spec)
-      | ptrC == ''Ptr
-      = return $ Just [cty| void* |]
-      | ptrC == ''FunPtr
-      = return $ Just [cty| void*(void) |]
-      | ptrC == ''StablePtr
-      = return $ Just [cty| void*(void) |]
-    haskellTypeToCType' lang (ConT tc)                         -- nullary type constructors are delegated
-      = haskellTypeNameToCType lang tc
-    haskellTypeToCType' lang ty@(VarT tv)                      -- can't marshal an unknown type
-      = unknownType lang ty
-    haskellTypeToCType' lang ty@(UnboxedTupleT _)              -- there is nothing like unboxed tuples in C
-      = unknownType lang ty
-    haskellTypeToCType' _lang ty                               -- everything else is marshalled as a stable pointer
+    haskellTypeToCType' lang' (ConT tc)                         -- nullary type constructors are delegated
+      = haskellTypeNameToCType lang' tc
+    haskellTypeToCType' lang' ty'@(VarT _)                      -- can't marshal an unknown type
+      = unknownType lang' ty'
+    haskellTypeToCType' lang' ty'@(UnboxedTupleT _)              -- there is nothing like unboxed tuples in C
+      = unknownType lang' ty'
+    haskellTypeToCType' _lang _ty                               -- everything else is marshalled as a stable pointer
       = return $ Just [cty| typename HsStablePtr |]
 
-    unknownType lang' ty'
+    unknownType lang' _ty
       = do
-        { reportErrorWithLang lang' $ "don't know a foreign type suitable for Haskell type '" ++ TH.pprint ty' ++ "'"
+        { reportErrorWithLang lang' $ "don't know a foreign type suitable for Haskell type '" ++ TH.pprint ty ++ "'"
         ; return Nothing
         }
 
@@ -104,7 +97,7 @@ haskellTypeToCType lang ty
 haskellTypeNameToCType :: QC.Extensions -> TH.Name -> Q (Maybe QC.Type)
 haskellTypeNameToCType ext tyname
   = case Map.lookup tyname (haskellToCTypeMap ext) of
-      Just c -> return $ Just c
+      Just cty' -> return $ Just cty'
       Nothing  -> do
         { info <- reify tyname
         ; case info of
@@ -119,16 +112,16 @@ haskellTypeNameToCType ext tyname
                          }
 
 haskellToCTypeMap :: QC.Extensions -> Map TH.Name QC.Type
-haskellToCTypeMap ObjC
+haskellToCTypeMap C11
   = Map.fromList
     [ (''CChar,   [cty| char |])
     , (''CSChar,  [cty| signed char |])
     , (''CUChar,  [cty| unsigned char |])
     , (''CShort,  [cty| short |])
     , (''CUShort, [cty| unsigned short |])
-    , (''Int,     [cty| typename NSInteger |])
+    , (''Int,     [cty| int |])
     , (''CInt,    [cty| int |])
-    , (''Word,    [cty| typename NSUInteger |])
+    , (''Word,    [cty| unsigned int |])
     , (''CUInt,   [cty| unsigned int |])
     , (''CLong,   [cty| long |])
     , (''CULong,  [cty| unsigned long |])
@@ -141,7 +134,7 @@ haskellToCTypeMap ObjC
     , (''CDouble, [cty| double |])
     --
     , (''Bool,    [cty| typename BOOL |])
-    , (''String,  [cty| typename NSString * |])
+    , (''String,  [cty| const char * |])
     , (''(),      [cty| void |])
     ]
 haskellToCTypeMap _lang
@@ -250,15 +243,8 @@ generateHaskellToCMarshaller' hsTy@(ConT mbe `AppT` argTy) cTy
                    _ -> missingErr
                }
           _ -> missingErr
-    missingErr = reportErrorAndFail ObjC $
+    missingErr = reportErrorAndFail C11 $
                    "missing 'Maybe' marshalling for '" ++ prettyQC cTy ++ "' to '" ++ TH.pprint hsTy ++ "'"
-generateHaskellToCMarshaller' hsTy@(ConT ptrC `AppT` argTy) cTy
-  | ptrC == ''Ptr || ptrC == ''FunPtr || ptrC == ''StablePtr
-  = return ( return hsTy
-           , cTy
-           , \val cont -> [| $cont $val |]
-           , \argName -> [cexp| $id:(show argName) |]
-           )
 generateHaskellToCMarshaller' hsTy cTy
   | Just hsMarshalTy <- Map.lookup cTy cIntegralMap    -- checking whether it is an integral type
   = return ( hsMarshalTy
@@ -278,12 +264,14 @@ generateHaskellToCMarshaller' hsTy cTy
            , \val cont -> [| $cont (C.fromBool $val) |]
            , \argName -> [cexp| ($id:(show argName)) |]
            )
-  | cTy == [cty| typename NSString * |]
+
+  | cTy == [cty| const char * |]
   = return ( [t| C.CString |]
-           , [cty| char * |]
+           , [cty| const char * |]
            , \val cont -> [| C.withCString $val $cont |]
-           , \argName -> [cexp| ($id:(show argName)) ? [NSString stringWithUTF8String: $id:(show argName)] : nil |]
+           , \argName -> [cexp| ($id:(show argName)) |]
            )
+
   | cTy == [cty| typename HsStablePtr |]
   = return ( [t| C.StablePtr $(return hsTy) |]
            , cTy
@@ -291,7 +279,7 @@ generateHaskellToCMarshaller' hsTy cTy
            , \argName -> [cexp| $id:(show argName) |]
            )
   | otherwise
-  = reportErrorAndFail ObjC $ "cannot marshal '" ++ TH.pprint hsTy ++ "' to '" ++ prettyQC cTy ++ "'"
+  = reportErrorAndFail C11 $ "cannot marshal '" ++ TH.pprint hsTy ++ "' to '" ++ prettyQC cTy ++ "'"
 
 -- |Generate the type-specific marshalling code for Haskell to C land marshalling for a C-Haskell type pair.
 --
@@ -373,15 +361,8 @@ generateCToHaskellMarshaller' hsTy@(ConT mbe `AppT` argTy) cTy
                    _ -> missingErr
                }
           _ -> missingErr
-    missingErr = reportErrorAndFail ObjC $
+    missingErr = reportErrorAndFail C11 $
                    "missing 'Maybe' marshalling for '" ++ prettyQC cTy ++ "' to '" ++ TH.pprint hsTy ++ "'"
-generateCToHaskellMarshaller' hsTy@(ConT ptrC `AppT` argTy) cTy
-  | ptrC == ''Ptr || ptrC == ''FunPtr || ptrC == ''StablePtr
-  = return ( return hsTy
-           , cTy
-           , \val cont -> [| $cont $val |]
-           , \argName -> [cexp| $id:(show argName) |]
-           )
 generateCToHaskellMarshaller' hsTy cTy
   | Just hsMarshalTy <- Map.lookup cTy cIntegralMap    -- checking whether it is an integral type
   = return ( hsMarshalTy
@@ -401,7 +382,9 @@ generateCToHaskellMarshaller' hsTy cTy
            , \val cont -> [| $cont (C.toBool $val) |]
            , \argName -> [cexp| $id:(show argName) |]
            )
-  | cTy == [cty| typename NSString * |]
+
+  {-
+  | cTy == [cty| typename CString * |]
   = return ( [t| C.CString |]
            , [cty| char * |]
            , \val cont -> [| do { str <- C.peekCString $val; C.free $val; $cont str } |]
@@ -419,6 +402,20 @@ generateCToHaskellMarshaller' hsTy cTy
                  : nil
                |]
            )
+  -}
+  | cTy == [cty| const char * |]
+  = return ( [t| C.CString |]
+           , [cty| const char * |]
+
+--           , \val cont -> [| C.withCString $val $cont |]
+
+           , \val cont -> [| C.peekCString $val >>= $cont |]
+
+           , \argName -> [cexp| ($id:(show argName)) |]
+           )
+
+
+
   | cTy == [cty| typename HsStablePtr |]
   = return ( [t| C.StablePtr $(return hsTy) |]
            , cTy
@@ -432,7 +429,8 @@ generateCToHaskellMarshaller' hsTy cTy
            , \argName -> [cexp| $id:(show argName) |]
            )
   | otherwise
-  = reportErrorAndFail ObjC $ "cannot marshall '" ++ prettyQC cTy ++ "' to '" ++ TH.pprint hsTy ++ "'"
+  = reportErrorAndFail C11 $ "cannot marshall '" ++ prettyQC cTy ++ "' to '" ++ TH.pprint hsTy ++ "'"
+
 
 cIntegralMap :: Map QC.Type TypeQ
 cIntegralMap = Map.fromList
@@ -447,8 +445,6 @@ cIntegralMap = Map.fromList
                , ([cty| unsigned long |],       [t| C.CULong |])
                , ([cty| long long |],           [t| C.CLLong |])
                , ([cty| unsigned long long |],  [t| C.CULLong |])
-               , ([cty| typename NSInteger |],  [t| Int |])
-               , ([cty| typename NSUInteger |], [t| Word |])
                ]
 
 cFloatingMap :: Map QC.Type TypeQ

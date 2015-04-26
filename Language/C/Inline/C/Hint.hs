@@ -1,7 +1,7 @@
 {-# LANGUAGE FlexibleInstances, GADTs, TemplateHaskell, QuasiQuotes #-}
 
 -- |
--- Module      : Language.C.Inline.ObjC.Hint
+-- Module      : Language.C.Inline.C.Hint
 -- Copyright   : 2014 Manuel M T Chakravarty
 -- License     : BSD3
 --
@@ -11,7 +11,7 @@
 --
 -- This module provides Objective-C specific hints.
 
-module Language.C.Inline.ObjC.Hint (
+module Language.C.Inline.C.Hint (
   -- * Class hints
   Class(..), IsType
 ) where
@@ -21,7 +21,7 @@ import Language.Haskell.TH        as TH
 
   -- quasi-quotation libraries
 import Language.C.Quote           as QC
-import Language.C.Quote.ObjC      as QC
+import Language.C.Quote.C         as QC
 
   -- friends
 import Language.C.Inline.Error
@@ -50,7 +50,7 @@ instance IsType TH.Name where
           FamilyI _ _      -> return $ ConT name
           _                ->
             do
-            { reportErrorAndFail QC.ObjC $
+            { reportErrorAndFail QC.C11 $
                 "expected '" ++ show name ++ "' to be a type name, but it is " ++
                 show (TH.ppr info)
             }
@@ -71,7 +71,7 @@ instance Hint Class where
       }
   foreignType (Class tyish)
     = do
-      { name <- theType tyish >>= headTyConNameOrError QC.ObjC
+      { name <- theType tyish >>= headTyConNameOrError QC.C11
       ; return $ Just [cty| typename $id:(nameBase name) * |]
       }
   showQ (Class tyish)

@@ -1,5 +1,6 @@
 *.o
 *.hi
+*.dyn_*
 
 /dist/
 tests/objc/InlineObjC
@@ -75,3 +76,5 @@ tests/objc/simple/Main_objc.h
 tests/objc/simple/Main_objc.m
 
 tests/objc/simple/Simple
+*_c.[ch]
+testsuite

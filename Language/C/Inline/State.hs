@@ -25,9 +25,7 @@ module Language.C.Inline.State (
   -- common libraries
 import Control.Applicative
 import Data.IORef
-import Foreign.C                  as C
 import Language.Haskell.TH        as TH
-import Language.Haskell.TH.Syntax as TH
 import System.IO.Unsafe                 (unsafePerformIO)
 
   -- quasi-quotation libraries
@@ -40,7 +38,7 @@ type CustomMarshaller = ( TH.Type         -- Haskell type
                         , TH.Name         -- Haskell->C marshaller function
                         , TH.Name)        -- C->Haskell marshaller function
 
-data State 
+data State
   = State
     { foreignTable  :: Q TH.Exp            -- table of foreign labels
     , foreignLabels :: [Name]              -- list of foreign imported names to populate 'foreignTable'
@@ -72,7 +70,7 @@ initialiseState :: Q ()
 initialiseState = modifyState (const initialState)
 
 readState :: (State -> a) -> Q a
-readState read = runIO $ read <$> readIORef state
+readState reader = runIO $ reader <$> readIORef state
 
 modifyState :: (State -> State) -> Q ()
 modifyState modify = runIO $ modifyIORef state modify
@@ -122,8 +120,8 @@ getMarshallers = readState marshallers
 lookupMarshaller :: TH.Type -> Q (Maybe CustomMarshaller)
 lookupMarshaller ty
   = do
-    { marshallers <- getMarshallers
-    ; case filter (\(hsTy, _, _, _, _) -> hsTy == ty) marshallers of
+    { mshs <- getMarshallers
+    ; case filter (\(hsTy, _, _, _, _) -> hsTy == ty) mshs of
         []           -> return Nothing
         marshaller:_ -> return $ Just marshaller
     }

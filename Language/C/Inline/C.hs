@@ -1,7 +1,7 @@
 {-# LANGUAGE TemplateHaskell, QuasiQuotes #-}
 
 -- |
--- Module      : Language.C.Inline.ObjC
+-- Module      : Language.C.Inline.C
 -- Copyright   : [2013] Manuel M T Chakravarty
 -- License     : BSD3
 --
@@ -9,9 +9,9 @@
 -- Stability   : experimental
 -- Portability : non-portable (GHC extensions)
 --
--- This module exports the principal API for inline Objective-C.
+-- This module exports the principal API for inline C.
 
-module Language.C.Inline.ObjC (
+module Language.C.Inline.C (
 
   -- * Re-export types from 'Foreign.C'
   module Foreign.C.Types, CString, CStringLen, CWString, CWStringLen, Errno, ForeignPtr, castForeignPtr,
@@ -20,20 +20,17 @@ module Language.C.Inline.ObjC (
   Name,
 
   -- * Combinators for inline Objective-C
-  objc_import, objc_interface, objc_implementation, objc_record, objc_marshaller, objc_typecheck, objc, objc_emit,
+  c_import, c_interface, c_implementation, c_typecheck, c, c_emit,
 
   -- * Marshalling annotations
   Annotated(..), (<:), void, Class(..), IsType,
 
-  -- * Property maps
-  PropertyAccess, (==>), (-->)
 ) where
 
   -- common libraries
 import Control.Applicative
 import Control.Monad              hiding (void)
 import Data.Array
-import Data.Char
 import Data.Dynamic
 import Data.IORef
 import Data.List
@@ -48,38 +45,32 @@ import System.IO.Unsafe                 (unsafePerformIO)
 
   -- quasi-quotation libraries
 import Language.C.Quote           as QC
-import Language.C.Quote.ObjC      as QC
+import Language.C.Quote.C         as QC
 import Text.PrettyPrint.Mainland  as QC
 
   -- friends
 import Language.C.Inline.Error
 import Language.C.Inline.Hint
 import Language.C.Inline.State
-import Language.C.Inline.TH
-import Language.C.Inline.ObjC.Hint
-import Language.C.Inline.ObjC.Marshal
+import Language.C.Inline.C.Hint
+import Language.C.Inline.C.Marshal
 
 
 -- |Specify imported Objective-C files. Needs to be spliced where an import declaration can appear. (Just put it
 -- straight after all the import statements in the module.)
 --
--- NB: This inline splice must appear before any other use of inline code in a module.
---
 -- FIXME: need to use TH.addDependentFile on each of the imported ObjC files & read headers
 --
-objc_import :: [FilePath] -> Q [TH.Dec]
-objc_import headers
+c_import :: [FilePath] -> Q [TH.Dec]
+c_import headers
   = do
-    {   -- explicitly initialise the state as we can run multiple times in a --make compile
-    ; initialiseState
-
-    ; mapM_ stashHeader headers
-    ; objc_jumptable <- newName "objc_jumptable"
-    ; setForeignTable $ varE objc_jumptable
-    ; sequence $ [ sigD objc_jumptable [t|IORef (Array Int Dynamic)|]
-                 , pragInlD objc_jumptable NoInline FunLike AllPhases    -- reqs template-haskell 2.8.0.0
-                 -- , pragInlD objc_jumptable (inlineSpecNoPhase False False)
-                 , valD (varP objc_jumptable) (normalB [|unsafePerformIO $ newIORef (array (0, 0) [])|]) []
+    { mapM_ stashHeader headers
+    ; c_jumptable <- newName "c_jumptable"
+    ; setForeignTable $ varE c_jumptable
+    ; sequence $ [ sigD c_jumptable [t|IORef (Array Int Dynamic)|]
+                 , pragInlD c_jumptable NoInline FunLike AllPhases    -- reqs template-haskell 2.8.0.0
+                 -- , pragInlD c_jumptable (inlineSpecNoPhase False False)
+                 , valD (varP c_jumptable) (normalB [|unsafePerformIO $ newIORef (array (0, 0) [])|]) []
                  ]
     -- ; return $ [d|import Language.C.Quote      as ObjC;
     --               import Language.C.Quote.ObjC as ObjC;
@@ -90,22 +81,22 @@ objc_import headers
 
 -- |Inline Objective-C top-level definitions for a header file ('.h').
 --
-objc_interface :: [QC.Definition] -> Q [TH.Dec]
-objc_interface defs
+c_interface :: [QC.Definition] -> Q [TH.Dec]
+c_interface defs
   = do
     { stashObjC_h defs
     ; return []
     }
 
--- |Inline Objective-C top-level definitions for an implementation file ('.m').
+-- |Inline C top-level definitions for an implementation file ('.c').
 --
 -- The top-level Haskell variables given in the first argument will be foreign exported to be accessed from the
 -- generated Objective-C code. In C, these Haskell variables will always be represented as functions. (In particular, if
 -- the Haskell variable refers to a CAF, it will be a nullary function in C — after all, a thunk may still need to be
 -- evaluated.)
 --
-objc_implementation :: [Annotated TH.Name] -> [QC.Definition] -> Q [TH.Dec]
-objc_implementation ann_vars defs
+c_implementation :: [Annotated TH.Name] -> [QC.Definition] -> Q [TH.Dec]
+c_implementation ann_vars defs
   = do
     { mapM_ exportVar ann_vars
     ; stashObjC_m defs
@@ -119,14 +110,14 @@ objc_implementation ann_vars defs
         ; (tvs, argTys, inIO, resTy) <- splitHaskellType <$> haskellTypeOf ann_var
 
             -- Determine C types
-        ; maybe_cArgTys <- mapM (haskellTypeToCType ObjC) argTys
-        ; maybe_cResTy  <- haskellTypeToCType ObjC resTy
+        ; maybe_cArgTys <- mapM (haskellTypeToCType C11) argTys
+        ; maybe_cResTy  <- haskellTypeToCType C11 resTy
         ; let cannotMapAllTypes = Nothing `elem` (maybe_cResTy : maybe_cArgTys)
               cArgTys           = map maybeErrorCtype maybe_cArgTys
               cResTy            = maybeErrorCtype maybe_cResTy
 
         ; if cannotMapAllTypes
-          then do {str <- annotatedShowQ ann_var; reportErrorWithLang ObjC $ "invalid marshalling: " ++ str}
+          then do {str <- annotatedShowQ ann_var; reportErrorWithLang C11 $ "invalid marshalling: " ++ str}
           else do
 
         {   -- Determine the bridging type and the marshalling code
@@ -202,223 +193,15 @@ forExpD cc str n ty
     ; return $ ForeignD (ExportF cc str n ty')
     }
 
--- |Maps a quoted property to a quoted projection and a quoted update function in addition to the type of the projected
--- value.
---
-data PropertyAccess = QC.ObjCIfaceDecl :==> (TH.TypeQ, TH.ExpQ, TH.ExpQ)
 
--- |Map a property to explicit projection and update functions.
---
-(==>) :: ObjCIfaceDecl -> (TypeQ, ExpQ, ExpQ) -> PropertyAccess
-(==>) = (:==>)
-
--- |Map a property to a field label. This function assumes that the field name is typed and can be reified.
---
-(-->) :: QC.ObjCIfaceDecl -> Name -> PropertyAccess
-prop --> fieldName = prop ==> (fieldTy,
-                               [| $(varE fieldName) |],
-                               [| \s v -> $(recUpdE [|s|] [do { vE <- [|v|]; return (fieldName, vE) }]) |])
-  where
-    fieldTy
-      = do
-        { info <- reify fieldName
-        ; case info of
-            VarI _ (ArrowT `AppT` _ `AppT` resTy) _ _ -> return resTy
-            nonVarInfo ->
-              do
-              { reportErrorAndFail QC.ObjC $
-                  "expected '" ++ show fieldName ++ "' to be a typed record field name, but it is " ++
-                  show (TH.ppr nonVarInfo)
-              }
-        }
-
--- |Specification of a bridge for a Haskell structure that can be queried and updated from Objective-C.
---
--- The first argument is the name of the Objective-C class that will be a proxy for the Haskell structure.
--- The second argument the name of the Haskell type of the bridged Haskell structure.
---
--- The generated class is immutable. When a property is updated, a new instance is allocated. This closely
--- mirrors the behaviour of the Haskell structure for which the class is a proxy.
---
--- The designated initialiser of the generated class is '[-initWith<HsName>HsPtr:(HsStablePtr)particleHsPtr]',
--- where '<HsName>' is the type name of the Haskell structure. This initialiser is generated if it is not
--- explicitly provided. The generated method '[-init]' calls the designated initialiser with 'nil' for the
--- stable pointer.
---
--- WARNING: This is a very experimental feature and it will SURELY change in the future!!!
---
---FIXME: don't generate the designated initialiser if it is explicitly provided
-objc_record :: String                 -- ^prefix of the class name
-            -> String                 -- ^class name
-            -> TH.Name                -- ^name of the Haskell type of the bridged Haskell structure
-            -> [Annotated TH.Name]    -- ^Haskell variables used in Objective-C code
-            -> [PropertyAccess]       -- ^Objective-C properties with corresponding Haskell projections and update functions
-            -> [QC.ObjCIfaceDecl]     -- ^extra interface declarations
-            -> [QC.Definition]        -- ^extra implementation declarations
-            -> Q [TH.Dec]
-objc_record prefix objcClassName hsTyName ann_vars properties ifaceDecls impDecls
-  | null objcClassName
-  = reportErrorAndFail ObjC "empty class name"
-  | otherwise
-  = do
-    {   -- Turn projection and update functions into Haskell top-level function definitions
-    ; let (propTys, propProjFuns, propUpdFuns) = unzip3 [(ty, proj, upd) | (_ :==> (ty, proj, upd)) <- properties]
-    ; projNames <- sequence [ return . mkName $ "proj" ++ objcClassName ++ show i | (_, i) <- zip propProjFuns [(11::Int) ..]]
-    ; updNames  <- sequence [ return . mkName $ "upd"  ++ objcClassName ++ show i | (_, i) <- zip propProjFuns [(11::Int) ..]]
-    ; let projUpd_defs = [ funD name [clause [] (normalB propFun) []]
-                         | (name, propFun) <- zip projNames propProjFuns ++ zip updNames propUpdFuns]
-
-        -- All new top-level functions are in the set of free variables for the implementation code
-    ; let all_ann_vars = ann_vars ++ zipWith addProjType projNames propTys ++ zipWith addUpdType updNames propTys
-
-        -- Construct the class interface
-    ; let propertyDecls     = [prop | (prop :==> _) <- properties]
-          updateMethodDecls = concatMap mkUpdateMethodDecl propertyDecls
-          iface             = [cunit|
-            @interface $id:prefixedClassName : NSObject
-
-            $ifdecls:propertyDecls
-            $ifdecls:updateMethodDecls
-            $ifdecls:ifaceDecls
-
-            @end
-          |]
-
-        -- Construct the class implementation
-    ; let updateMethodDefs     = concat $ zipWith mkUpdateMethodDef     propertyDecls updNames
-          projectionMethodDefs = concat $ zipWith mkProjectionMethodDef propertyDecls projNames
-          imp                  = [cunit|
-            @interface $id:prefixedClassName ()
-            @property (readonly, assign, nonatomic) typename HsStablePtr $id:hsPtrName;
-            @end
-
-            @implementation $id:prefixedClassName
-
-            $edecls:updateMethodDefs
-            $edecls:impDecls
-
-            - (instancetype)init
-            {
-              return [self $id:initWithHsPtrName:nil];
-            }
-
-            - (instancetype)$id:initWithHsPtrName:(typename HsStablePtr)$id:hsPtrName
-            {
-              self = [super init];
-              if (self)
-                $id:("_" ++ hsPtrName) = $id:hsPtrName;
-              return self;
-            }
-
-            - (void)dealloc
-            {
-              hs_free_stable_ptr($id:("_" ++ hsPtrName));
-            }
-
-            $edecls:projectionMethodDefs
-
-            @end
-          |]
-
-        -- Inline the class interface and class implementation; then, return all new Haskell bindings
-    ; iface_defs <- objc_interface iface
-    ; imp_defs   <- objc_implementation all_ann_vars imp
-    ; fun_defs   <- sequence projUpd_defs
-    ; return $ iface_defs ++ imp_defs ++ fun_defs
-    }
-  where
-    addProjType name ty = name :> [t| $(conT hsTyName) -> $ty |]
-    addUpdType  name ty = name :> [t| $(conT hsTyName) -> $ty -> $(conT hsTyName) |]
-
-    prefixedClassName = prefix ++ objcClassName
-    lowerClassName    = toLower (head objcClassName) : tail objcClassName
-    hsTyNameBase      = nameBase hsTyName
-    lowerHsTyName     = toLower (head hsTyNameBase) : tail hsTyNameBase
-    hsPtrName         = lowerHsTyName ++ "HsPtr"
-    initWithHsPtrName = "initWith" ++ hsTyNameBase ++ "HsPtr"
-
-    mkUpdateMethodDecl (ObjCIfaceProp _attrs
-                                   (FieldGroup spec [Field (Just (Id propName _)) (Just decl) _exp _] loc)
-                                   _)
-      = [objcifdecls|
-          + (instancetype)$id:lowerClassName:(typename $id:prefixedClassName *)$id:lowerClassName
-                          $id:("with" ++ upperPropName):($ty:propTy)$id:propName;
-        |]
-      where
-        upperPropName = toUpper (head propName) : tail propName
-        propTy        = QC.Type spec decl loc
-
-    mkUpdateMethodDef (ObjCIfaceProp _attrs
-                                  (FieldGroup spec [Field (Just (Id propName _)) (Just decl) _exp _] loc)
-                                  _)
-                      updName
-      = [objcimdecls|
-          + (instancetype)$id:lowerClassName:(typename $id:prefixedClassName *)$id:lowerClassName
-                          $id:("with" ++ upperPropName):($ty:propTy)$id:propName
-          {
-            return [[$id:prefixedClassName alloc] $id:initWithHsPtrName:$id:(show updName)($id:lowerClassName.$id:hsPtrName,
-                                                                                       $id:propName)];
-          }
-        |]
-      where
-        upperPropName = toUpper (head propName) : tail propName
-        propTy        = QC.Type spec decl loc
-
-    mkProjectionMethodDef (ObjCIfaceProp _attrs
-                                      (FieldGroup spec [Field (Just (Id propName _)) (Just decl) _exp _] loc)
-                                      _)
-                          updName
-      = [objcimdecls|
-          - ($ty:propTy)$id:propName
-          {
-            return $id:(show updName)(self.$id:hsPtrName);
-          }
-        |]
-      where
-        propTy = QC.Type spec decl loc
-
--- |Declare a Haskell<->Objective-C marshaller pair to be used in all subsequent marshalling code generation.
---
--- On the Objective-C side, the marshallers must use a wrapped foreign pointer to an Objective-C class (just as those
--- of 'Class' hints). The domain and codomain of the two marshallers must be the opposite and both are executing in 'IO'.
---
-objc_marshaller :: TH.Name -> TH.Name -> Q [TH.Dec]
-objc_marshaller haskellToObjCName objcToHaskellName
-  = do
-    {   -- check that the marshallers have compatible types
-    ; (hsTy1, classTy1) <- argAndResultTy haskellToObjCName
-    ; (classTy2, hsTy2) <- argAndResultTy objcToHaskellName
-    ; unless (hsTy1 == hsTy2 && classTy1 == classTy2) $
-        reportErrorAndFail QC.ObjC $
-          "the two marshallers must map between the same types"
-
-    ; tyconName <- headTyConNameOrError QC.ObjC classTy1
-    ; let cTy = [cty| typename $id:(nameBase tyconName) * |]
-    ; stashMarshaller (hsTy1, classTy1, cTy, haskellToObjCName, objcToHaskellName)
-    ; return []
-    }
-  where
-    argAndResultTy name
-      = do
-        { info <- reify name
-        ; case info of
-            VarI _ (ArrowT `AppT` argTy `AppT` (ConT io `AppT` resTy)) _ _
-              | io == ''IO
-              -> return (argTy, resTy)
-            VarI _ _ _ _ -> reportErrorAndFail QC.ObjC $
-                               show name ++ "'s type must match 'a -> IO r'"
-            _            -> reportErrorAndFail QC.ObjC $
-                               show name ++ " must be a function"
-        }
-
--- |Inline Objective-C expression.
+-- |Inline C expression.
 --
 -- The inline expression will be wrapped in a C function whose arguments are marshalled versions of the Haskell
 -- variables given in the first argument. The marshalling of the variables and of the result is determined by the
 -- marshalling annotations at the variables and the inline expression.
 --
-objc :: [Annotated TH.Name] -> Annotated QC.Exp -> Q TH.Exp
-objc ann_vars ann_e
+c :: [Annotated TH.Name] -> Annotated QC.Exp -> Q TH.Exp
+c ann_vars ann_e
   = {- tryWithPlaceholder $ -} do  -- FIXME: catching the 'fail' purges all reported errors :(
     {   -- Sanity check of arguments
     ; let vars = map stripAnnotation ann_vars
@@ -446,9 +229,7 @@ objc ann_vars ann_e
     ; let hsWrapperTy = haskellWrapperType [] bridgeArgTys bridgeResTy
 
         -- FFI setup for the C wrapper
-    ; loc <- location
-    ; let modName = dropExtension . takeFileName . loc_filename $ loc
-    ; cwrapperName <- show <$> newName ("cwrapper_" ++ modName) >>= newName   -- Don't ask...
+    ; cwrapperName <- show <$> newName "cwrapper" >>= newName   -- Don't ask...
     ; stashHS
         [ forImpD CCall Safe (show cwrapperName) cwrapperName hsWrapperTy
         ]
@@ -471,7 +252,7 @@ objc ann_vars ann_e
       = do { jumptable <- getForeignTable
            ; [|fromDyn
                  ((unsafePerformIO $ readIORef $jumptable) ! $(TH.lift idx))
-                 (error "InlineObjC: INTERNAL ERROR: type mismatch in jumptable")
+                 (error "InlineC: INTERNAL ERROR: type mismatch in jumptable")
                :: $ty |]
            }
 
@@ -479,21 +260,21 @@ objc ann_vars ann_e
       = do
         { unless (null err_ann_vars) $ do
             { var_strs <- mapM annotatedShowQ err_ann_vars
-            ; reportErrorWithLang ObjC $ "invalid marshalling: " ++ intercalate ", " var_strs
+            ; reportErrorWithLang C11 $ "invalid marshalling: " ++ intercalate ", " var_strs
             }
         ; unless (isJust maybe_cResTy) $ do
             { ty <- haskellTypeOf ann_e
-            ; reportErrorWithLang ObjC $ "invalid marshalling for result type " ++ show ty
+            ; reportErrorWithLang C11 $ "invalid marshalling for result type " ++ show ty
             }
         ; [| error "error in inline Objective-C expression" |]
         }
 
     annotatedHaskellTypeToCType ann
       = do
-        { maybe_objcType <- foreignTypeOf ann
-        ; case maybe_objcType of
-            Nothing       -> haskellTypeOf ann >>= haskellTypeToCType ObjC
-            Just objcType -> return $ Just objcType
+        { maybe_cType <- foreignTypeOf ann
+        ; case maybe_cType of
+            Nothing       -> haskellTypeOf ann >>= haskellTypeToCType C11
+            Just cType -> return $ Just cType
         }
 
 -- Turn a list of argument types and a result type into a Haskell wrapper signature.
@@ -578,54 +359,43 @@ generateHSCall vars hsArgMarshallers f hsResMarshaller inIO
     invoke []         call ret = [| $ret $call |]
     invoke (arg:args) call ret = arg [| \name -> $(invoke args [| $call name |] ret)|]
 
--- |Emit the Objective-C file and return the foreign declarations. Needs to be the last use of an 'objc...' function.
+-- |Emit the C file and return the foreign declarations. Needs to be the last use of an 'c...' function.
 -- (Just put it at the end of the Haskell module.)
 --
-objc_emit :: Q [TH.Dec]
-objc_emit
+c_emit :: Q [TH.Dec]
+c_emit
   = do
     { loc <- location
     ; let origFname   = loc_filename loc
-          objcFname   = dropExtension origFname ++ "_objc"
-          objcFname_h = objcFname `addExtension` "h"
-          objcFname_m = objcFname `addExtension` "m"
-    ; allHeaders       <- getHeaders
-    ; (objc_h, objc_m) <- getHoistedObjC
-    ; let (hsFFIHeader, headers) = separateHsFFI allHeaders
+          cFname   = dropExtension origFname ++ "_c"
+          cFname_h = cFname `addExtension` "h"
+          cFname_m = cFname `addExtension` "c"
+    ; headers          <- getHeaders
+    ; (c_h, c_m) <- getHoistedObjC
     ; runIO $
         do
-        { writeFile  objcFname_h (info origFname)
-        ; appendFile objcFname_h (unlines (map mkImport headers) ++ "\n")
-        ; appendFile objcFname_h (show $ QC.ppr objc_h)
-        ; writeFile  objcFname_m (info origFname)
-        ; appendFile objcFname_m ("#import \"" ++ takeFileName objcFname_h ++ "\"\n")
-        ; appendFile objcFname_m (mkImport hsFFIHeader ++ "\n\n")
-        ; appendFile objcFname_m (show $ QC.ppr objc_m)
+        { writeFile  cFname_h (info origFname)
+        ; appendFile cFname_h (unlines (map mkImport headers) ++ "\n")
+        ; appendFile cFname_h (show $ QC.ppr c_h)
+        ; writeFile  cFname_m (info origFname)
+        ; appendFile cFname_m ("#include \"HsFFI.h\"\n")
+        ; appendFile cFname_m ("#include \"" ++ takeFileName cFname_h ++ "\"\n\n")
+        ; appendFile cFname_m (show $ QC.ppr c_m)
         }
-    ; objc_jumptable <- getForeignTable
+    ; c_jumptable <- getForeignTable
     ; labels         <- getForeignLabels
-    ; initialize     <- [d|objc_initialise :: IO ()
-                           objc_initialise
+    ; initialize     <- [d|c_initialise :: IO ()
+                           c_initialise
                             = -- unsafePerformIO $
-                                writeIORef $objc_jumptable $
+                                writeIORef $c_jumptable $
                                   listArray ($(lift (1::Int)), $(lift $ length labels)) $
                                     $(listE [ [|toDyn $(varE label)|] | label <- labels])
                         |]
     ; (initialize ++) <$> getHoistedHS
     }
   where
-    hsFFI = "HsFFI.h"     -- Haskell C FFI header as prescribed in the standard
-    
-      -- If the user supplies the FFI header (presumably at a non-standard location), use that; otherwise, we include
-      -- the header without a path. (The FFI header should by default only be included into the .m file; otherwise, we
-      -- get into problems with framework modules.)
-    separateHsFFI headers
-      = case break ((== hsFFI) . takeFileName) headers of
-          (before, [])        -> (hsFFI, before)
-          (before, ffi:after) -> (ffi, before ++ after)
-    
-    mkImport h@('<':_) = "#import " ++ h ++ ""
-    mkImport h         = "#import \"" ++ h ++ "\""
+    mkImport h@('<':_) = "#include " ++ h ++ ""
+    mkImport h         = "#include \"" ++ h ++ "\""
 
     info fname = "// Generated code: DO NOT EDIT\n\
                  \//   generated from '" ++ fname ++ "'\n\
@@ -636,7 +406,7 @@ objc_emit
 -- Template Haskell performs type checking on declaration groups seperated by toplevel splices. In order for a type
 -- declaration to be available to an Objective-C inline directive, the type declaration must be in an earlier
 -- declaration group than the Objective-C inline directive. A toplevel Objective-C inline directive always is the start
--- of a new declaration group; hence, it can be considered to be implicitly preceded by an 'objc_typecheck'.
+-- of a new declaration group; hence, it can be considered to be implicitly preceded by an 'c_typecheck'.
 --
-objc_typecheck :: Q [TH.Dec]
-objc_typecheck = return []
+c_typecheck :: Q [TH.Dec]
+c_typecheck = return []
