@@ -102,12 +102,8 @@ Library
 
   Extensions:           TemplateHaskell, QuasiQuotes
 
--- Doesn't work!!! Use the Makefile in the tests/ instead. (How can we get cabal to compile & link the generated ObjC files?)
 Test-Suite concept
-  if flag(ManualTests)
      Buildable:         True
-  else
-     Buildable:         False
 
   Build-depends:        base              >= 4.0 && < 5,
                         language-c-quote,
@@ -122,3 +118,5 @@ Test-Suite concept
   Main-is:              MainInlineObjC.hs
 
   Other-modules:        TestInlineObjC
+
+  C-sources:            tests/objc/concept/TestInlineObjc_objc.m
