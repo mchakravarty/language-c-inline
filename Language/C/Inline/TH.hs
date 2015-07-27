@@ -1,4 +1,4 @@
-{-# LANGUAGE TemplateHaskell, GADTs, FlexibleInstances, ViewPatterns #-}
+{-# LANGUAGE TemplateHaskell, GADTs, FlexibleInstances, ViewPatterns, CPP #-}
 
 -- |
 -- Module      : Language.C.Inline.TH
@@ -144,8 +144,13 @@ decomposeForeignPtrWrapper ty
 
     substituteCxt subst cxt' = map (substitutePred subst) cxt'
 
+#if __GLASGOW_HASKELL__ < 709
     substitutePred subst (ClassP name tys) = ClassP name (map (substitute subst) tys)
     substitutePred subst (EqualP ty1 ty2)  = EqualP (substitute subst ty1) (substitute subst ty2)
+#else
+    -- Constraints are just types now.
+    substitutePred = substitute
+#endif
 
     substituteName []               tv     = VarT tv
     substituteName ((arg, tv):_args) thisTv
