@@ -135,10 +135,7 @@ decomposeForeignPtrWrapper ty
     substitute _subst ty
       = ty
     
-    substituteCxt subst cxt = map (substitutePred subst) cxt
-    
-    substitutePred subst (ClassP name tys) = ClassP name (map (substitute subst) tys)
-    substitutePred subst (EqualP ty1 ty2)  = EqualP (substitute subst ty1) (substitute subst ty2)
+    substituteCxt subst cxt = map (substitute subst) cxt
     
     substituteName []               tv     = VarT tv
     substituteName ((arg, tv):args) thisTv
