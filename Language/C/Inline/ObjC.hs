@@ -50,7 +50,7 @@ import System.IO.Unsafe                 (unsafePerformIO)
 
   -- quasi-quotation libraries
 import Language.C.Quote           as QC
-import Language.C.Quote.ObjC      as QC
+import Language.C.Quote.ObjC      as QC hiding (cunit)
 import Text.PrettyPrint.Mainland  as QC
 
   -- friends
@@ -514,6 +514,12 @@ wrapperBodyType (argTy:argTys) resTy = [t| $argTy -> $(wrapperBodyType argTys re
 -- Given a C expression to be executed, this generator produces a C function that executes the expression with all
 -- arguments and the result marshalled using the provided marshallers.
 --
+-- NB: We need to add the 'ns_returns_retained' to the prototype to ensure that ARC passes a +1 retain count to Haskell
+--     for any retainable object pointer type. We add the attribute regardless of the actual return type. Clang appears
+--     to tolerate this and it simplifies code generation.
+--
+--     See also <http://clang.llvm.org/docs/AutomaticReferenceCounting.html#retained-return-values>
+--
 generateCWrapper :: TH.Name
                  -> [QC.Type]
                  -> [TH.Name]       -- name of arguments after marshalling (will be the original name without unique)
@@ -537,7 +543,7 @@ generateCWrapper cwrapperName argTys vars argMarshallers cWrapperArgTys argVars 
                                                }|]
     in
     ([cunit|
-       $ty:cWrapperResTy $id:(show cwrapperName) ($params:(cParams cWrapperArgTys argVars));
+       $ty:cWrapperResTy $id:(show cwrapperName) ($params:(cParams cWrapperArgTys argVars)) __attribute__((ns_returns_retained));
      |],
      [cunit|
        $ty:cWrapperResTy $id:(show cwrapperName) ($params:(cParams cWrapperArgTys argVars))

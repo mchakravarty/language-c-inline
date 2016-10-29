@@ -12,11 +12,15 @@
 -- This module provides Template Haskell convenience functions.
 
 module Language.C.Inline.TH (
+  -- * Quasiquoter that allows GCC extensions in addition to Objective-C
+  cunit,
+
   -- * Decompose type expressions
   headTyConName, headTyConNameOrError,
   
   -- * Decompose idiomatic declarations
   foreignWrapperDatacon, ptrOfForeignPtrWrapper, unwrapForeignPtrWrapper
+  
 ) where
 
   -- standard libraries
@@ -24,14 +28,23 @@ import Control.Applicative
 import Foreign.Ptr
 import Foreign.ForeignPtr
 import Language.Haskell.TH        as TH
+import Language.Haskell.TH.Quote  as TH
 import Language.Haskell.TH.Syntax as TH
 
   -- quasi-quotation libraries
+import Language.C.Parser          as QC
 import Language.C.Quote           as QC
 
   -- friends
 import Language.C.Inline.Error
 
+
+
+
+-- |Quasiquoter for C compilation units that permits GCC extensions, such as '__attribute__'.
+--
+cunit :: TH.QuasiQuoter
+cunit = QC.quasiquote [QC.ObjC, QC.Gcc] ["id", "instancetype"] QC.parseUnit
 
 -- |Project the name of the head of a type term if it is a type constructor.
 --
