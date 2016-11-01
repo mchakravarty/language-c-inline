@@ -30,9 +30,11 @@ To build the more complex Haskell interpreter app:
 * Execute `cd tests/objc/app; make`.
 * Now `open -a HSApp.app`.
 
-I tested it with Haskell Platform 2013.2.0.0 (which includes GHC 7.6.3) and it requires the latest version of `language-c-quote`, which is currently 0.7.7.
-
 Status
 ======
 
-The library is in beta and so far focuses on Objective-C. Automatic marshalling support is still somewhat limited. However, it is quite easy to add more types, and I do welcome pull request!
+**Update:** For various reasons (mostly lack of time on my side), all my recent changes have been on the `release/0.7` branch, which also hosts the version that you can find on Hackage. That version has been used in production. It is the glue between the Haskell and Swift part of [Haskell for Mac](http://haskellformac.com). For a larger open-source example of using `language-c-inline`, see [HaskellSpriteKit](https://github.com/mchakravarty/HaskellSpriteKit).
+
+Unfortunately, I haven't been able to find the time to merge all the improvements on `release/0.7` back into `master`.
+
+The library is in beta and focuses mostly on Objective-C. Automatic marshalling support is still somewhat limited. However, it is quite easy to add more types, and I do welcome pull request!
