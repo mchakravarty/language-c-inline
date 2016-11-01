@@ -2,7 +2,7 @@
 
 -- |
 -- Module      : Language.C.Inline.TH
--- Copyright   : 2014 Manuel M T Chakravarty
+-- Copyright   : [2014..2016] Manuel M T Chakravarty
 -- License     : BSD3
 --
 -- Maintainer  : Manuel M T Chakravarty <chak@justtesting.org>
@@ -12,9 +12,6 @@
 -- This module provides Template Haskell convenience functions.
 
 module Language.C.Inline.TH (
-  -- * Quasiquoter that allows GCC extensions in addition to Objective-C
-  cunit,
-
   -- * Decompose type expressions
   headTyConName, headTyConNameOrError,
   
@@ -38,13 +35,6 @@ import Language.C.Quote           as QC
   -- friends
 import Language.C.Inline.Error
 
-
-
-
--- |Quasiquoter for C compilation units that permits GCC extensions, such as '__attribute__'.
---
-cunit :: TH.QuasiQuoter
-cunit = QC.quasiquote [QC.ObjC, QC.Gcc] ["id", "instancetype"] QC.parseUnit
 
 -- |Project the name of the head of a type term if it is a type constructor.
 --

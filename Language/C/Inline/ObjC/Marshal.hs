@@ -1,8 +1,8 @@
-{-# LANGUAGE PatternGuards, TemplateHaskell, QuasiQuotes #-}
+{-# LANGUAGE PatternGuards, TemplateHaskell, QuasiQuotes, ForeignFunctionInterface #-}
 
 -- |
 -- Module      : Language.C.Inline.ObjC.Marshal
--- Copyright   : [2013] Manuel M T Chakravarty
+-- Copyright   : [2013..2016] Manuel M T Chakravarty
 -- License     : BSD3
 --
 -- Maintainer  : Manuel M T Chakravarty <chak@cse.unsw.edu.au>
@@ -14,6 +14,10 @@
 -- FIXME: Some of the code can go into a module for general marshalling, as only some of it is ObjC-specific.
 
 module Language.C.Inline.ObjC.Marshal (
+
+  -- * Objective-C memory management support
+  objc_retain, objc_release, objc_release_ptr, newForeignClassPtr, newForeignStructPtr,
+
   -- * Determine corresponding foreign types of Haskell types
   haskellTypeToCType,
   
@@ -48,6 +52,27 @@ import Language.C.Inline.State
 import Language.C.Inline.TH
 
 
+-- Objective-C memory management support from the Objective-C runtime
+-- ------------------------------------------------------------------
+
+foreign import ccall  "objc_retain"  objc_retain      :: C.Ptr a -> IO (C.Ptr a)
+foreign import ccall  "objc_release" objc_release     :: C.Ptr a -> IO ()
+foreign import ccall "&objc_release" objc_release_ptr :: C.FunPtr (C.Ptr a -> IO ())
+
+-- |Turn a retainable Objective-C pointer into a foreign pointer that is released when finalised.
+--
+-- NB: We need to retain the pointer first as it won't come with a +1 retain count for Haskell land to consume
+--     (at best, it will have an autoreleased +1 if it is a function return result).
+--
+newForeignClassPtr :: C.Ptr a -> IO (C.ForeignPtr a)
+newForeignClassPtr ptr = objc_retain ptr >>= newForeignPtr objc_release_ptr
+
+-- |Turn a non-retainable C pointer into a foreign pointer that is freed when finalised.
+--
+newForeignStructPtr :: C.Ptr a -> IO (C.ForeignPtr a)
+newForeignStructPtr ptr = newForeignPtr finalizerFree ptr
+
+
 -- Determine foreign types
 -- -----------------------
 
@@ -60,8 +85,8 @@ haskellTypeToCType lang ty
   = do
     { maybe_marshaller <- lookupMarshaller ty
     ; case maybe_marshaller of
-        Just (_, _, cTy, _, _) -> return $ Just cTy            -- use a custom marshaller if one is available for this type
-        Nothing                -> haskellTypeToCType' lang ty  -- otherwise, continue below...
+        Just (_, _, cTy, _, _, _) -> return $ Just cTy            -- use a custom marshaller if one is available for this type
+        Nothing                   -> haskellTypeToCType' lang ty  -- otherwise, continue below...
     }
   where
     haskellTypeToCType' lang (ListT `AppT` (ConT char))        -- marshal '[Char]' as 'String'
@@ -200,8 +225,8 @@ generateHaskellToCMarshaller hsTy cTy@(Type (DeclSpec _ _ (Tnamed (Id name _) _ 
   = do
     { maybe_marshaller <- lookupMarshaller hsTy
     ; case maybe_marshaller of
-        Just (_, classTy, cTy', haskellToC, _cToHaskell)
-          | cTy' == cTy                                -- custom marshaller mapping to an Objective-C class
+        Just (_, classTy, cTy', haskellToC, _cToHaskell, _newForeignPtr) 
+          | cTy' == cTy                                -- custom marshaller mapping to an Objective-C class or struct
           -> return ( ptrOfForeignPtrWrapper classTy
                     , cTy
                     , \val cont -> [| do
@@ -299,6 +324,9 @@ generateHaskellToCMarshaller' hsTy cTy
 
 -- |Generate the type-specific marshalling code for Haskell to C land marshalling for a C-Haskell type pair.
 --
+-- The first argument is a function to turn a pointer into a foreign pointer in the case where an explicit 'Class' or
+-- 'Struct' hint was provided.
+--
 -- The result has the following components:
 --
 -- * Haskell type after Haskell-side marshalling.
@@ -306,27 +334,33 @@ generateHaskellToCMarshaller' hsTy cTy
 -- * Generator for the Haskell-side marshalling code.
 -- * Generator for the C-side marshalling code.
 --
-generateCToHaskellMarshaller :: TH.Type -> QC.Type -> Q (TH.TypeQ, QC.Type, HaskellMarshaller, CMarshaller)
-generateCToHaskellMarshaller hsTy cTy@(Type (DeclSpec _ _ (Tnamed (Id name _) _ _) _) (Ptr _ (DeclRoot _) _) _)
+generateCToHaskellMarshaller :: Maybe TH.Name -> TH.Type -> QC.Type -> Q (TH.TypeQ, QC.Type, HaskellMarshaller, CMarshaller)
+generateCToHaskellMarshaller (Just newForeignPtr)
+                             hsTy 
+                             cTy@(Type (DeclSpec _ _ (Tnamed (Id name _) _ _) _) (Ptr _ (DeclRoot _) _) _)
   | Just name == maybeHeadName                         -- ForeignPtr mapped to an Objective-C class
   = return ( ptrOfForeignPtrWrapper hsTy
            , cTy
            , \val cont -> do { let datacon = foreignWrapperDatacon hsTy
-                             ; [| do { fptr <- newForeignPtr_ $val; $cont ($datacon fptr) } |] 
+                             ; [| do { fptr <- $(varE newForeignPtr) $val; $cont ($datacon fptr) } |] 
                              }
            , \argName -> [cexp| $id:(show argName) |]
            )
-  | otherwise
+  where
+    maybeHeadName = fmap nameBase $ headTyConName hsTy
+generateCToHaskellMarshaller Nothing
+                             hsTy 
+                             cTy
   = do
     { maybe_marshaller <- lookupMarshaller hsTy
     ; case maybe_marshaller of
-        Just (_, classTy, cTy', _haskellToC, cToHaskell)
-          | cTy' == cTy                                -- custom marshaller mapping to an Objective-C class
+        Just (_, classTy, cTy', _haskellToC, cToHaskell, newForeignPtr)
+          | cTy' == cTy                                -- custom marshaller mapping to an Objective-C class or struct
           -> return ( ptrOfForeignPtrWrapper classTy
                     , cTy
                     , \val cont -> do { let datacon = foreignWrapperDatacon classTy
                                       ; [| do 
-                                           { fptr <- newForeignPtr_ $val
+                                           { fptr  <- $(varE newForeignPtr) $val
                                            ; hsVal <- $(varE cToHaskell) ($datacon fptr) 
                                            ; $cont hsVal
                                            } |] 
@@ -336,15 +370,13 @@ generateCToHaskellMarshaller hsTy cTy@(Type (DeclSpec _ _ (Tnamed (Id name _) _ 
         Nothing                                        -- other => continue below
           -> generateCToHaskellMarshaller' hsTy cTy
     }
-  where
-    maybeHeadName = fmap nameBase $ headTyConName hsTy
-generateCToHaskellMarshaller hsTy cTy = generateCToHaskellMarshaller' hsTy cTy
+generateCToHaskellMarshaller _ hsTy cTy = generateCToHaskellMarshaller' hsTy cTy
 
 generateCToHaskellMarshaller' :: TH.Type -> QC.Type -> Q (TH.TypeQ, QC.Type, HaskellMarshaller, CMarshaller)
 generateCToHaskellMarshaller' hsTy@(ConT maybe `AppT` argTy) cTy
   | maybe == ''Maybe && isCPtrType cTy
   = do 
-    { (argTy', cTy', hsMarsh, cMarsh) <- generateCToHaskellMarshaller argTy cTy
+    { (argTy', cTy', hsMarsh, cMarsh) <- generateCToHaskellMarshaller Nothing argTy cTy
     ; ty <- argTy'
     ; resolve ty argTy' cTy' hsMarsh cMarsh
     }

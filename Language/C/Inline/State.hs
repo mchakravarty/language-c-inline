@@ -2,7 +2,7 @@
 
 -- |
 -- Module      : Language.C.Inline.State
--- Copyright   : [2013] Manuel M T Chakravarty
+-- Copyright   : [2013..2016] Manuel M T Chakravarty
 -- License     : BSD3
 --
 -- Maintainer  : Manuel M T Chakravarty <chak@cse.unsw.edu.au>
@@ -34,11 +34,12 @@ import System.IO.Unsafe                 (unsafePerformIO)
 import Language.C.Quote           as QC
 
 
-type CustomMarshaller = ( TH.Type         -- Haskell type
-                        , TH.Type         -- Haskell-side class type
-                        , QC.Type         -- C type
-                        , TH.Name         -- Haskell->C marshaller function
-                        , TH.Name)        -- C->Haskell marshaller function
+type CustomMarshaller = ( TH.Type          -- Haskell type
+                        , TH.Type          -- Haskell-side class type
+                        , QC.Type          -- C type
+                        , TH.Name          -- Haskell->C marshaller function
+                        , TH.Name          -- C->Haskell marshaller function
+                        , TH.Name)         -- C->Haskell pointer marshalling
 
 data State 
   = State
@@ -123,7 +124,7 @@ lookupMarshaller :: TH.Type -> Q (Maybe CustomMarshaller)
 lookupMarshaller ty
   = do
     { marshallers <- getMarshallers
-    ; case filter (\(hsTy, _, _, _, _) -> hsTy == ty) marshallers of
+    ; case filter (\(hsTy, _, _, _, _, _) -> hsTy == ty) marshallers of
         []           -> return Nothing
         marshaller:_ -> return $ Just marshaller
     }

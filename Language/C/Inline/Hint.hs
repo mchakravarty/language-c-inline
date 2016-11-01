@@ -2,7 +2,7 @@
 
 -- |
 -- Module      : Language.C.Inline.Hint
--- Copyright   : [2013..2014] Manuel M T Chakravarty
+-- Copyright   : [2013..2016] Manuel M T Chakravarty
 -- License     : BSD3
 --
 -- Maintainer  : Manuel M T Chakravarty <chak@justtesting.org>
@@ -19,7 +19,7 @@ module Language.C.Inline.Hint (
   Hint(..), 
   
   -- * Querying of annotated entities
-  haskellTypeOf, foreignTypeOf, stripAnnotation
+  haskellTypeOf, foreignTypeOf, newForeignPtrOf, stripAnnotation
 ) where
 
   -- common libraries
@@ -62,19 +62,22 @@ annotatedShowQ (Typed name) = return $ "Typed " ++ show name
 -- |Hints imply marshalling strategies, which include source and destination types for marshalling.
 --
 class Hint hint where
-  haskellType :: hint -> Q TH.Type
-  foreignType :: hint -> Q (Maybe QC.Type)    -- ^In case of 'Nothing', the foreign type is determined by the Haskell type.
-  showQ       :: hint -> Q String
+  haskellType       :: hint -> Q TH.Type
+  foreignType       :: hint -> Q (Maybe QC.Type)  -- ^In case of 'Nothing', the foreign type is determined by the Haskell type.
+  showQ             :: hint -> Q String
+  newForeignPtrName :: hint -> Q (Maybe TH.Name)
   
 instance Hint Name where   -- must be a type name
-  haskellType = conT
-  foreignType = const (return Nothing)
-  showQ       = return . show
+  haskellType       = conT
+  foreignType       = const (return Nothing)
+  showQ             = return . show
+  newForeignPtrName = const (return Nothing)
       
 instance Hint (Q TH.Type) where
-  haskellType = id
-  foreignType = const (return Nothing)
-  showQ       = (show <$>)
+  haskellType       = id
+  foreignType       = const (return Nothing)
+  showQ             = (show <$>)
+  newForeignPtrName = const (return Nothing)
 
 -- |Determine the Haskell type implied for the given annotated entity.
 --
@@ -99,6 +102,12 @@ haskellTypeOf (Typed name)
 foreignTypeOf :: Annotated e -> Q (Maybe QC.Type)
 foreignTypeOf (_ :> hint)  = foreignType hint
 foreignTypeOf (Typed name) = return Nothing
+
+-- |Determine the name of the function to create a new foreign pointer for this type if any.
+--
+newForeignPtrOf :: Annotated e -> Q (Maybe TH.Name)
+newForeignPtrOf (_ :> hint)  = newForeignPtrName hint
+newForeignPtrOf (Typed name) = return Nothing
 
 -- |Remove the annotation.
 --

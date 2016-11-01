@@ -41,7 +41,7 @@ listOfStringToNSArray strs
 nsArrayToListOfString :: NSArray NSString -> IO [String]
 nsArrayToListOfString = error "not needed here"
 
-objc_marshaller 'listOfStringToNSArray 'nsArrayToListOfString
+objc_class_marshaller 'listOfStringToNSArray 'nsArrayToListOfString
 
 go :: IO ()
 go = $(objc ['msgs :> [t| [String] |]] $ void [cexp| NSLog(@"%@", msgs.description) |])

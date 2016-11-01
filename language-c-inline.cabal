@@ -1,7 +1,7 @@
 Name:                   language-c-inline
-Version:                0.7.9.3
+Version:                0.7.10.0
 Cabal-version:          >= 1.9.2
-Tested-with:            GHC == 7.10.2
+Tested-with:            GHC == 7.10.3
 Build-type:             Simple
 
 Synopsis:               Inline C & Objective-C code in Haskell for language interoperability
@@ -15,6 +15,8 @@ Description:            This library provides inline C & Objective-C code using 
                         For more information, see <https://github.com/mchakravarty/language-c-inline/wiki>.
                         .
                         Known bugs: <https://github.com/mchakravarty/language-c-inline/issues>
+                        .
+                        * New in 0.7.10: Distinction between 'Class' (NSObject pointers) and 'Struct' (C pointers) in both hints and marhsallers.
                         .
                         * New in 0.7.9: C wrapper names include the filename to disambiguate linker symbols.
                         .

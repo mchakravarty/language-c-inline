@@ -2,7 +2,7 @@
 
 -- |
 -- Module      : Language.C.Inline.ObjC
--- Copyright   : [2013] Manuel M T Chakravarty
+-- Copyright   : [2013..2016] Manuel M T Chakravarty
 -- License     : BSD3
 --
 -- Maintainer  : Manuel M T Chakravarty <chak@cse.unsw.edu.au>
@@ -15,15 +15,19 @@ module Language.C.Inline.ObjC (
 
   -- * Re-export types from 'Foreign.C'
   module Foreign.C.Types, CString, CStringLen, CWString, CWStringLen, Errno, ForeignPtr, castForeignPtr,
-
+  
   -- * Re-export types from Template Haskell
   Name,
 
+  -- * Objective-C memory management support
+  objc_retain, objc_release, objc_release_ptr, newForeignClassPtr, newForeignStructPtr,
+  
   -- * Combinators for inline Objective-C 
-  objc_import, objc_interface, objc_implementation, objc_record, objc_marshaller, objc_typecheck, objc, objc_emit,
+  objc_import, objc_interface, objc_implementation, objc_record, objc_marshaller, objc_class_marshaller, 
+  objc_struct_marshaller, objc_typecheck, objc, objc_emit,
   
   -- * Marshalling annotations
-  Annotated(..), (<:), void, Class(..), IsType,
+  Annotated(..), (<:), void, Class(..), Struct(..), IsType,
 
   -- * Property maps
   PropertyAccess, (==>), (-->)
@@ -50,7 +54,7 @@ import System.IO.Unsafe                 (unsafePerformIO)
 
   -- quasi-quotation libraries
 import Language.C.Quote           as QC
-import Language.C.Quote.ObjC      as QC hiding (cunit)
+import Language.C.Quote.ObjC      as QC
 import Text.PrettyPrint.Mainland  as QC
 
   -- friends
@@ -61,6 +65,9 @@ import Language.C.Inline.TH
 import Language.C.Inline.ObjC.Hint
 import Language.C.Inline.ObjC.Marshal
 
+
+-- Combinators for inline Objective-C 
+-- ----------------------------------
 
 -- |Specify imported Objective-C files. Needs to be spliced where an import declaration can appear. (Just put it
 -- straight after all the import statements in the module.)
@@ -133,7 +140,7 @@ objc_implementation ann_vars defs
 
         {   -- Determine the bridging type and the marshalling code
         ; (bridgeArgTys, cBridgeArgTys, hsArgMarshallers, cArgMarshallers) <-
-            unzip4 <$> zipWithM generateCToHaskellMarshaller argTys cArgTys
+            unzip4 <$> zipWithM (generateCToHaskellMarshaller Nothing) argTys cArgTys 
         ; (bridgeResTy,  cBridgeResTy,  hsResMarshaller,  cResMarshaller)  <- generateHaskellToCMarshaller resTy cResTy
 
             -- Haskell type of the foreign wrapper function
@@ -378,13 +385,30 @@ objc_record prefix objcClassName hsTyName ann_vars properties ifaceDecls impDecl
       where
         propTy = QC.Type spec decl loc
 
+-- |Deprecated: use 'objc_class_marshaller' or 'objc_struct_marshaller' instead
+--
+objc_marshaller :: TH.Name -> TH.Name -> Q [TH.Dec]
+{-# DEPRECATED objc_marshaller "use 'objc_class_marshaller' or 'objc_struct_marshaller' instead" #-}
+objc_marshaller = objc_class_marshaller
+
 -- |Declare a Haskell<->Objective-C marshaller pair to be used in all subsequent marshalling code generation.
 --
 -- On the Objective-C side, the marshallers must use a wrapped foreign pointer to an Objective-C class (just as those
 -- of 'Class' hints). The domain and codomain of the two marshallers must be the opposite and both are executing in 'IO'.
 --
-objc_marshaller :: TH.Name -> TH.Name -> Q [TH.Dec]
-objc_marshaller haskellToObjCName objcToHaskellName
+objc_class_marshaller :: TH.Name -> TH.Name -> Q [TH.Dec]
+objc_class_marshaller = objc_marshaller' 'newForeignClassPtr
+
+-- |Declare a Haskell<->Objective-C marshaller pair to be used in all subsequent marshalling code generation.
+--
+-- On the Objective-C side, the marshallers must use a wrapped foreign pointer to an C struct (just as those
+-- of 'Struct' hints). The domain and codomain of the two marshallers must be the opposite and both are executing in 'IO'.
+--
+objc_struct_marshaller :: TH.Name -> TH.Name -> Q [TH.Dec]
+objc_struct_marshaller = objc_marshaller' 'newForeignStructPtr
+
+objc_marshaller' :: TH.Name -> TH.Name -> TH.Name -> Q [TH.Dec]
+objc_marshaller' newForeignPtrFun haskellToObjCName objcToHaskellName
   = do
     {   -- check that the marshallers have compatible types
     ; (hsTy1, classTy1) <- argAndResultTy haskellToObjCName
@@ -395,7 +419,7 @@ objc_marshaller haskellToObjCName objcToHaskellName
     
     ; tyconName <- headTyConNameOrError QC.ObjC classTy1
     ; let cTy = [cty| typename $id:(nameBase tyconName) * |]
-    ; stashMarshaller (hsTy1, classTy1, cTy, haskellToObjCName, objcToHaskellName)
+    ; stashMarshaller (hsTy1, classTy1, cTy, haskellToObjCName, objcToHaskellName, newForeignPtrFun)
     ; return []
     }
   where
@@ -425,6 +449,7 @@ objc ann_vars ann_e
     ; let vars = map stripAnnotation ann_vars
     ; varTys <- mapM haskellTypeOf ann_vars
     ; resTy  <- haskellTypeOf ann_e
+    ; newFP  <- newForeignPtrOf ann_e
 
         -- Determine C types
     ; maybe_cArgTys <- mapM annotatedHaskellTypeToCType ann_vars
@@ -441,7 +466,7 @@ objc ann_vars ann_e
     ; (bridgeArgTys, cBridgeArgTys, hsArgMarshallers, cArgMarshallers) <-
         unzip4 <$> zipWithM generateHaskellToCMarshaller varTys cArgTys
     ; (bridgeResTy,  cBridgeResTy,  hsResMarshaller,  cResMarshaller)  <-
-        generateCToHaskellMarshaller resTy cResTy
+        generateCToHaskellMarshaller newFP resTy cResTy 
 
         -- Haskell type of the foreign wrapper function
     ; let hsWrapperTy = haskellWrapperType [] bridgeArgTys bridgeResTy
@@ -514,12 +539,6 @@ wrapperBodyType (argTy:argTys) resTy = [t| $argTy -> $(wrapperBodyType argTys re
 -- Given a C expression to be executed, this generator produces a C function that executes the expression with all
 -- arguments and the result marshalled using the provided marshallers.
 --
--- NB: We need to add the 'ns_returns_retained' to the prototype to ensure that ARC passes a +1 retain count to Haskell
---     for any retainable object pointer type. We add the attribute regardless of the actual return type. Clang appears
---     to tolerate this and it simplifies code generation.
---
---     See also <http://clang.llvm.org/docs/AutomaticReferenceCounting.html#retained-return-values>
---
 generateCWrapper :: TH.Name
                  -> [QC.Type]
                  -> [TH.Name]       -- name of arguments after marshalling (will be the original name without unique)
@@ -543,7 +562,7 @@ generateCWrapper cwrapperName argTys vars argMarshallers cWrapperArgTys argVars 
                                                }|]
     in
     ([cunit|
-       $ty:cWrapperResTy $id:(show cwrapperName) ($params:(cParams cWrapperArgTys argVars)) __attribute__((ns_returns_retained));
+       $ty:cWrapperResTy $id:(show cwrapperName) ($params:(cParams cWrapperArgTys argVars));
      |],
      [cunit|
        $ty:cWrapperResTy $id:(show cwrapperName) ($params:(cParams cWrapperArgTys argVars))

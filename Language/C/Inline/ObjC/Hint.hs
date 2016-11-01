@@ -2,7 +2,7 @@
 
 -- |
 -- Module      : Language.C.Inline.ObjC.Hint
--- Copyright   : 2014 Manuel M T Chakravarty
+-- Copyright   : [2014..2016] Manuel M T Chakravarty
 -- License     : BSD3
 --
 -- Maintainer  : Manuel M T Chakravarty <chak@justtesting.org>
@@ -12,8 +12,8 @@
 -- This module provides Objective-C specific hints.
 
 module Language.C.Inline.ObjC.Hint (
-  -- * Class hints
-  Class(..), IsType
+  -- * Class and Struct hints
+  Class(..), Struct(..), IsType
 ) where
 
   -- standard libraries
@@ -28,6 +28,7 @@ import Language.C.Quote.ObjC      as QC
 import Language.C.Inline.Error
 import Language.C.Inline.Hint
 import Language.C.Inline.TH
+import Language.C.Inline.ObjC.Marshal
 
 
 -- |Class of entities that can be used as TH types.
@@ -80,3 +81,34 @@ instance Hint Class where
       { ty <- theType tyish
       ; return $ "Class " ++ show ty
       }
+  newForeignPtrName (Class _)
+    = return $ Just 'newForeignClassPtr
+
+-- |Hint indicating to marshal a pointer to a C struct as a foreign pointer, where the argument is the Haskell type
+-- representing the C type name. The Haskell type name must coincide with the C type name.
+--
+-- NB: This is like `Class` with the difference that finalisers on foreign pointers created during marshalling use
+--     'free' rather than 'release'.
+--
+data Struct where
+  Struct :: IsType t => t -> Struct
+
+instance Hint Struct where
+  haskellType (Struct tyish) 
+    = do
+      { ty <- theType tyish
+      ; foreignWrapperDatacon ty      -- FAILS if the declaration is not a 'ForeignPtr' wrapper
+      ; return ty
+      }
+  foreignType (Struct tyish)
+    = do
+      { name <- theType tyish >>= headTyConNameOrError QC.ObjC
+      ; return $ Just [cty| typename $id:(nameBase name) * |]
+      }
+  showQ (Struct tyish) 
+    = do
+      { ty <- theType tyish
+      ; return $ "Struct " ++ show ty
+      }
+  newForeignPtrName (Struct _)
+    = return $ Just 'newForeignStructPtr
