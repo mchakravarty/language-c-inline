@@ -73,13 +73,20 @@ haskellTypeToCType lang ty
           else
             unknownType lang' ty'
         }
-    haskellTypeToCType' lang' (ConT tc)                         -- nullary type constructors are delegated
-      = haskellTypeNameToCType lang' tc
-    haskellTypeToCType' lang' ty'@(VarT _)                      -- can't marshal an unknown type
-      = unknownType lang' ty'
-    haskellTypeToCType' lang' ty'@(UnboxedTupleT _)              -- there is nothing like unboxed tuples in C
-      = unknownType lang' ty'
-    haskellTypeToCType' _lang _ty                               -- everything else is marshalled as a stable pointer
+    haskellTypeToCType' lang ty@(ConT ptrC `AppT` argTy)       -- pass vanilla pointers through (as per FFI spec)
+      | ptrC == ''Ptr
+      = return $ Just [cty| void* |]
+      | ptrC == ''FunPtr
+      = return $ Just [cty| void*(void) |]
+      | ptrC == ''StablePtr
+      = return $ Just [cty| void*(void) |]
+    haskellTypeToCType' lang (ConT tc)                         -- nullary type constructors are delegated
+      = haskellTypeNameToCType lang tc
+    haskellTypeToCType' lang ty@(VarT tv)                      -- can't marshal an unknown type
+      = unknownType lang ty
+    haskellTypeToCType' lang ty@(UnboxedTupleT _)              -- there is nothing like unboxed tuples in C
+      = unknownType lang ty
+    haskellTypeToCType' _lang ty                               -- everything else is marshalled as a stable pointer
       = return $ Just [cty| typename HsStablePtr |]
 
     unknownType lang' ty'
@@ -245,6 +252,13 @@ generateHaskellToCMarshaller' hsTy@(ConT mbe `AppT` argTy) cTy
           _ -> missingErr
     missingErr = reportErrorAndFail ObjC $
                    "missing 'Maybe' marshalling for '" ++ prettyQC cTy ++ "' to '" ++ TH.pprint hsTy ++ "'"
+generateHaskellToCMarshaller' hsTy@(ConT ptrC `AppT` argTy) cTy
+  | ptrC == ''Ptr || ptrC == ''FunPtr || ptrC == ''StablePtr
+  = return ( return hsTy
+           , cTy
+           , \val cont -> [| $cont $val |]
+           , \argName -> [cexp| $id:(show argName) |]
+           )
 generateHaskellToCMarshaller' hsTy cTy
   | Just hsMarshalTy <- Map.lookup cTy cIntegralMap    -- checking whether it is an integral type
   = return ( hsMarshalTy
@@ -361,6 +375,13 @@ generateCToHaskellMarshaller' hsTy@(ConT mbe `AppT` argTy) cTy
           _ -> missingErr
     missingErr = reportErrorAndFail ObjC $
                    "missing 'Maybe' marshalling for '" ++ prettyQC cTy ++ "' to '" ++ TH.pprint hsTy ++ "'"
+generateCToHaskellMarshaller' hsTy@(ConT ptrC `AppT` argTy) cTy
+  | ptrC == ''Ptr || ptrC == ''FunPtr || ptrC == ''StablePtr
+  = return ( return hsTy
+           , cTy
+           , \val cont -> [| $cont $val |]
+           , \argName -> [cexp| $id:(show argName) |]
+           )
 generateCToHaskellMarshaller' hsTy cTy
   | Just hsMarshalTy <- Map.lookup cTy cIntegralMap    -- checking whether it is an integral type
   = return ( hsMarshalTy

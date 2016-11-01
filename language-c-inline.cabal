@@ -1,7 +1,7 @@
 Name:                   language-c-inline
 Version:                0.8.0.0
 Cabal-version:          >= 1.9.2
-Tested-with:            GHC == 7.6.3, GHC == 7.8.2
+Tested-with:            GHC == 7.6.3, GHC == 7.8.3
 Build-type:             Simple
 
 Synopsis:               Inline C & Objective-C code in Haskell for language interoperability
@@ -17,6 +17,8 @@ Description:            This library provides inline C & Objective-C code using 
                         Known bugs: <https://github.com/mchakravarty/language-c-inline/issues>
                         .
                         * New in 0.8.0: Support for ISO C, courtesy Erik de Castro Lopo <erikd@mega-nerd.com>
+                        .
+                        * New in 0.7.9: C wrapper names include the filename to disambiguate linker symbols.
                         .
                         * New in 0.7.6: (1) Record marshalling; (2) foreign pointer-class marshalling; (3) custom type
                         marshallers. Generated _objc.m files now always include "HsFFI.h" (as the tool can generate type names
@@ -80,7 +82,7 @@ Library
                         base              >= 4.0 && < 5,
                         containers        >= 0.4,
                         filepath          >= 1.2,
-                        language-c-quote  >= 0.8,
+                        language-c-quote  >= 0.8 && < 0.9,
                         mainland-pretty   >= 0.2.5,
                         template-haskell
 
@@ -100,12 +102,8 @@ Library
 
   Extensions:           TemplateHaskell, QuasiQuotes
 
--- Doesn't work!!! Use the Makefile in the tests/ instead. (How can we get cabal to compile & link the generated ObjC files?)
 Test-Suite concept
-  if flag(ManualTests)
      Buildable:         True
-  else
-     Buildable:         False
 
   Build-depends:        base              >= 4.0 && < 5,
                         language-c-quote,
@@ -120,3 +118,5 @@ Test-Suite concept
   Main-is:              MainInlineObjC.hs
 
   Other-modules:        TestInlineObjC
+
+  C-sources:            tests/objc/concept/TestInlineObjc_objc.m

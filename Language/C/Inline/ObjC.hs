@@ -63,12 +63,17 @@ import Language.C.Inline.ObjC.Marshal
 -- |Specify imported Objective-C files. Needs to be spliced where an import declaration can appear. (Just put it
 -- straight after all the import statements in the module.)
 --
+-- NB: This inline splice must appear before any other use of inline code in a module.
+--
 -- FIXME: need to use TH.addDependentFile on each of the imported ObjC files & read headers
 --
 objc_import :: [FilePath] -> Q [TH.Dec]
 objc_import headers
   = do
-    { mapM_ stashHeader headers
+    {   -- explicitly initialise the state as we can run multiple times in a --make compile
+    ; initialiseState
+
+    ; mapM_ stashHeader headers
     ; objc_jumptable <- newName "objc_jumptable"
     ; setForeignTable $ varE objc_jumptable
     ; sequence $ [ sigD objc_jumptable [t|IORef (Array Int Dynamic)|]
@@ -441,7 +446,9 @@ objc ann_vars ann_e
     ; let hsWrapperTy = haskellWrapperType [] bridgeArgTys bridgeResTy
 
         -- FFI setup for the C wrapper
-    ; cwrapperName <- show <$> newName "cwrapper" >>= newName   -- Don't ask...
+    ; loc <- location
+    ; let modName = dropExtension . takeFileName . loc_filename $ loc
+    ; cwrapperName <- show <$> newName ("cwrapper_" ++ modName) >>= newName   -- Don't ask...
     ; stashHS
         [ forImpD CCall Safe (show cwrapperName) cwrapperName hsWrapperTy
         ]
@@ -582,8 +589,9 @@ objc_emit
           objcFname   = dropExtension origFname ++ "_objc"
           objcFname_h = objcFname `addExtension` "h"
           objcFname_m = objcFname `addExtension` "m"
-    ; headers          <- getHeaders
+    ; allHeaders       <- getHeaders
     ; (objc_h, objc_m) <- getHoistedObjC
+    ; let (hsFFIHeader, headers) = separateHsFFI allHeaders
     ; runIO $
         do
         { writeFile  objcFname_h (info origFname)
@@ -591,7 +599,7 @@ objc_emit
         ; appendFile objcFname_h (show $ QC.ppr objc_h)
         ; writeFile  objcFname_m (info origFname)
         ; appendFile objcFname_m ("#import \"" ++ takeFileName objcFname_h ++ "\"\n")
-        ; appendFile objcFname_m ("#import \"HsFFI.h\"\n\n")
+        ; appendFile objcFname_m (mkImport hsFFIHeader ++ "\n\n")
         ; appendFile objcFname_m (show $ QC.ppr objc_m)
         }
     ; objc_jumptable <- getForeignTable
@@ -606,6 +614,16 @@ objc_emit
     ; (initialize ++) <$> getHoistedHS
     }
   where
+    hsFFI = "HsFFI.h"     -- Haskell C FFI header as prescribed in the standard
+    
+      -- If the user supplies the FFI header (presumably at a non-standard location), use that; otherwise, we include
+      -- the header without a path. (The FFI header should by default only be included into the .m file; otherwise, we
+      -- get into problems with framework modules.)
+    separateHsFFI headers
+      = case break ((== hsFFI) . takeFileName) headers of
+          (before, [])        -> (hsFFI, before)
+          (before, ffi:after) -> (ffi, before ++ after)
+    
     mkImport h@('<':_) = "#import " ++ h ++ ""
     mkImport h         = "#import \"" ++ h ++ "\""
 
