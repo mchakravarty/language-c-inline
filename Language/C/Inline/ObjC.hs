@@ -53,9 +53,10 @@ import System.FilePath
 import System.IO.Unsafe                 (unsafePerformIO)
 
   -- quasi-quotation libraries
-import Language.C.Quote           as QC
-import Language.C.Quote.ObjC      as QC
-import Text.PrettyPrint.Mainland  as QC
+import Language.C.Quote                 as QC
+import Language.C.Quote.ObjC            as QC
+import Text.PrettyPrint.Mainland        as QC
+import Text.PrettyPrint.Mainland.Class  as QC
 
   -- friends
 import Language.C.Inline.Error
@@ -431,9 +432,9 @@ objc_marshaller' newForeignPtrFun haskellToObjCName objcToHaskellName
               | io == ''IO
               -> return (argTy, resTy)
             VarI _ ty _ -> reportErrorAndFail QC.ObjC $
-                               show name ++ "'s type must match 'a -> IO r'"
-            other         -> reportErrorAndFail QC.ObjC $
-                               show name ++ " must be a function"
+                             show name ++ "'s type must match 'a -> IO r'"
+            other       -> reportErrorAndFail QC.ObjC $
+                             show name ++ " must be a function"
         }
 
 -- |Inline Objective-C expression.
@@ -622,11 +623,11 @@ objc_emit
         do
         { writeFile  objcFname_h (info origFname)
         ; appendFile objcFname_h (unlines (map mkImport headers) ++ "\n")
-        ; appendFile objcFname_h (pretty 100 $ QC.ppr objc_h)
+        ; appendFile objcFname_h (pretty 80 $ QC.ppr objc_h)
         ; writeFile  objcFname_m (info origFname)
         ; appendFile objcFname_m ("#import \"" ++ takeFileName objcFname_h ++ "\"\n")
         ; appendFile objcFname_m (mkImport hsFFIHeader ++ "\n\n")
-        ; appendFile objcFname_m (pretty 100 $ QC.ppr objc_m)
+        ; appendFile objcFname_m (pretty 80 $ QC.ppr objc_m)
         }
     ; objc_jumptable <- getForeignTable
     ; labels         <- getForeignLabels

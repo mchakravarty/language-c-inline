@@ -92,7 +92,13 @@ objc_implementation [Typed 'launchMsg, Typed 'start, Typed 'evalExpr, Typed 'loa
 // IBAction
 - (void)textFieldDidSend:(typename NSTextField *)sender
 {
-  [self appendOutput:evalExpr(self.interpreterSession, [sender stringValue])];
+  typename NSString *result;
+  NSLog(@"expression: %@", [sender stringValue]);
+  result = evalExpr(self.interpreterSession, [sender stringValue]);
+  NSLog(@"result: %@", result);
+  [self appendOutput:result];
+//  [self appendOutput:evalExpr(self.interpreterSession, [sender stringValue])];
+  NSLog(@"reset sender");
   [sender setStringValue:@""];
 }
 

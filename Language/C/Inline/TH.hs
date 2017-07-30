@@ -108,7 +108,7 @@ decomposeForeignPtrWrapper ty
 
     ; info <- reify name
     ; case info of
-        TyConI (NewtypeD [] _name tvs mayKd (NormalC dataconName [(_strict, ConT fptr `AppT` ptrArg)]) _deriv)
+        TyConI (NewtypeD [] _name tvs _kind (NormalC dataconName [(_strict, ConT fptr `AppT` ptrArg)]) _deriv)
           | fptr == ''ForeignPtr
           -> return (dataconName, substitute (zip args tvs) ptrArg)
         nonForeign ->

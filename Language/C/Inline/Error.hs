@@ -26,9 +26,10 @@ import Language.Haskell.TH        as TH
 import Language.Haskell.TH.Syntax as TH
 
   -- quasi-quotation libraries
-import Language.C.Quote           as QC
-import Language.C.Quote.ObjC      as QC
-import Text.PrettyPrint.Mainland  as QC
+import Language.C.Quote                 as QC
+import Language.C.Quote.ObjC            as QC
+import Text.PrettyPrint.Mainland        as QC
+import Text.PrettyPrint.Mainland.Class  as QC
 
 
 reportErrorWithLang :: QC.Extensions -> String -> Q ()

@@ -1,7 +1,7 @@
 Name:                   language-c-inline
-Version:                0.7.10.0
+Version:                0.7.11.0
 Cabal-version:          >= 1.9.2
-Tested-with:            GHC == 7.10.3
+Tested-with:            GHC == 8.0.2
 Build-type:             Simple
 
 Synopsis:               Inline C & Objective-C code in Haskell for language interoperability
@@ -82,8 +82,8 @@ Library
                         base              >= 4.0 && < 5,
                         containers        >= 0.4,
                         filepath          >= 1.2,
-                        language-c-quote  >= 0.8 && < 0.12,
-                        mainland-pretty   >= 0.2.5,
+                        language-c-quote  >= 0.12.1,
+                        mainland-pretty   >= 0.6 && < 0.7,
                         template-haskell
 
   Exposed-modules:      Language.C.Inline.ObjC

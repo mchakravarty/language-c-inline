@@ -19,9 +19,8 @@ module Interpreter (
 import Prelude                      hiding (catch)
 import Control.Applicative
 import Control.Concurrent
-import Control.Exception            (SomeException, evaluate)
+import Control.Exception            (SomeException, evaluate, catch)
 import Control.Monad
-import Control.Monad.Catch
 
 import System.IO
 
