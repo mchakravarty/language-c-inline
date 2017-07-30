@@ -82,7 +82,7 @@ Library
                         base              >= 4.0 && < 5,
                         containers        >= 0.4,
                         filepath          >= 1.2,
-                        language-c-quote  >= 0.8 && < 0.9,
+                        language-c-quote  >= 0.8 && < 0.12,
                         mainland-pretty   >= 0.2.5,
                         template-haskell
 
